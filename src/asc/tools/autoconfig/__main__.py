@@ -13,7 +13,11 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_OUTPUT_PATH_HELP = "Path to config.json file to write"
+_OUTPUT_PATH_HELP = (
+    "Path to config.json file to write. Existing groups are kept, but a "
+    "rediscovered group replaces the same-named group wholesale — apps you "
+    "added by hand under that group are dropped."
+)
 _SERVICE_NAME_MAPPING_HELP = (
     'JSON dict mapping resource group names to group names. Example: \'{"rg-prod": "MyProduct"}\''
 )
@@ -32,7 +36,11 @@ def main(
         help=_SERVICE_NAME_MAPPING_HELP,
     ),
 ) -> None:
-    """Discover Azure App Services and write/merge asc config.json."""
+    """Discover Azure App Services and write/merge asc config.json.
+
+    The merge is per-group, not per-app: a rediscovered group replaces the
+    same-named group in the existing file wholesale.
+    """
     try:
         mapping: dict[str, str] = json.loads(service_name_mapping)
     except json.JSONDecodeError as e:
