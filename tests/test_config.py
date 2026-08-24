@@ -40,6 +40,26 @@ def test_bootstrap_on_missing(tmp_path, monkeypatch):
     assert load_config() == {} and p.exists()
 
 
+def test_tenant_id_is_optional(tmp_path, monkeypatch):
+    """asc scopes every az call by subscription, so tenant_id may be omitted."""
+    p = tmp_path / "config.json"
+    p.write_text(
+        json.dumps(
+            {
+                "G": {
+                    "a": {
+                        "app_name": "n",
+                        "resource_group": "r",
+                        "subscription_id": "s",
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(cfg, "CONFIG_PATH", p)
+    assert load_config()["G"]["a"].tenant_id is None
+
+
 def test_invalid_binding_raises(tmp_path, monkeypatch):
     p = tmp_path / "config.json"
     p.write_text(json.dumps({"G": {"a": {"app_name": "only"}}}))

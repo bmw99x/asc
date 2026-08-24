@@ -63,9 +63,11 @@ asc reads `~/.config/asc/config.json`. The schema maps group names to app aliase
 }
 ```
 
+`app_name`, `resource_group` and `subscription_id` are required. `tenant_id` is optional and informational only — every `az` call is scoped by subscription, so asc never reads it.
+
 Keys prefixed with `_` (e.g. `_example`) are ignored by asc.
 
-A blank config file and a companion `README.md` describing the schema are created automatically on first run. If the config is empty or missing, asc falls back to a built-in mock dataset so you can try it without Azure credentials.
+A blank config file and a companion `README.md` describing the schema are created automatically on first run. If the config is empty or missing, asc falls back to a built-in mock dataset so you can try it without Azure credentials. If the config exists but is malformed — invalid JSON, or a binding missing a required field — asc prints the error and exits non-zero rather than showing mock data that looks real.
 
 ### Auto-configure from Azure
 

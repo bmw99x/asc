@@ -13,6 +13,9 @@ Schema on disk (~/.config/asc/config.json):
         }
     }
 
+``tenant_id`` is optional and informational — asc scopes every call by
+subscription.
+
 Keys prefixed with "_" are reserved (e.g. "_example") and are stripped on load.
 """
 
@@ -45,6 +48,10 @@ Edit `config.json` in this directory to register your Azure App Service bindings
 }
 ```
 
+`app_name`, `resource_group` and `subscription_id` are required. `tenant_id`
+is optional and informational only — asc scopes every `az` call by
+subscription, so you can leave it out.
+
 ## Example
 
 ```json
@@ -71,12 +78,18 @@ Keys prefixed with `_` (e.g. `_example`) are ignored by asc.
 
 
 class AppBinding(BaseModel):
-    """A single Azure App Service binding."""
+    """A single Azure App Service binding.
+
+    ``tenant_id`` is optional and informational only: every ``az`` call is
+    scoped by ``--subscription``, so asc never needs the tenant. autoconfig
+    still records it because it is useful when debugging which directory a
+    subscription lives in.
+    """
 
     app_name: str
     resource_group: str
     subscription_id: str
-    tenant_id: str
+    tenant_id: str | None = None
 
 
 # group -> app alias -> AppBinding
