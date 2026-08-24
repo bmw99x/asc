@@ -28,18 +28,16 @@ This tool is experimental and provided as-is. The author is not responsible for 
 
 ## Install
 
-Install from a local clone:
-
-```bash
-git clone <this-repo> asc
-cd asc
-uv tool install .
-```
-
-The project has no published git remote yet. Once it is pushed, `https://github.com/bmw99x/asc` is the expected location, and the install becomes:
-
 ```bash
 uv tool install git+https://github.com/bmw99x/asc
+```
+
+Or clone and install locally:
+
+```bash
+git clone https://github.com/bmw99x/asc
+cd asc
+uv tool install .
 ```
 
 ## Configuration
