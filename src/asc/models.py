@@ -140,12 +140,12 @@ class SortMode(Enum):
     the provider returned. Values double as the label shown to the user.
     """
 
-    AZURE = "Azure order"
     KEY_ASC = "Key A-Z"
     KEY_DESC = "Key Z-A"
+    AZURE = "Azure order"
 
     def next(self) -> "SortMode":
-        """Return the next mode in the cycle, wrapping back to AZURE."""
+        """Return the next mode in the cycle, wrapping back to KEY_ASC."""
         modes = list(SortMode)
         return modes[(modes.index(self) + 1) % len(modes)]
 

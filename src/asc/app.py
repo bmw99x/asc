@@ -140,7 +140,7 @@ class AscApp(App):
         self._slots: list[str] = [PRODUCTION]
         self._filter: str = ""
         # Display order only — reset whenever a new context is loaded.
-        self._sort_mode: SortMode = SortMode.AZURE
+        self._sort_mode: SortMode = SortMode.KEY_ASC
         self._g_pressed: bool = False
         self._d_pressed: bool = False
         # _undo_stack holds staged (uncommitted) changes.
@@ -208,7 +208,7 @@ class AscApp(App):
 
         self._all_settings = await self._fetch_settings(slot)
         self._baseline = copy.deepcopy(self._all_settings)
-        self._sort_mode = SortMode.AZURE
+        self._sort_mode = SortMode.KEY_ASC
         self._undo_stack.clear()
         self.dirty = False
         self._refresh_table()
@@ -645,7 +645,7 @@ class AscApp(App):
         self._confirm_navigate(self.current_group, self.current_app, next_slot)
 
     def action_cycle_sort(self) -> None:
-        """Cycle the table's display order: Azure order → A-Z → Z-A."""
+        """Cycle the table's display order: A-Z → Z-A → Azure order."""
         self._clear_prefix()
         self._sort_mode = self._sort_mode.next()
         self._refresh_table()

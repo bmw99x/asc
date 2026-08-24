@@ -686,7 +686,7 @@ class TestSaveRefresh:
             await wait_loaded(pilot)
 
             fetched = provider.list_settings(PRODUCTION)
-            assert keys_in_order(pilot) == [s.key for s in fetched]
+            assert keys_in_order(pilot) == sorted((s.key for s in fetched), key=str.lower)
             assert "WEBSITE_PLATFORM" in keys_in_order(pilot)
             assert app._all_settings == fetched  # noqa: SLF001
             assert app._baseline == fetched  # noqa: SLF001
@@ -1725,18 +1725,24 @@ class TestSorting:
     AZURE_ORDER = ["NEW_TO_DELETE", "LOG_LEVEL", "DATABASE_URL", "APP_ENV"]
     ASC_ORDER = ["APP_ENV", "DATABASE_URL", "LOG_LEVEL", "NEW_TO_DELETE"]
 
-    async def test_s_cycles_azure_then_ascending_then_descending(self):
+    async def test_default_sort_is_ascending_on_mount(self):
         """
         GIVEN a provider whose settings arrive out of alphabetical order
-        WHEN the user presses S three times
-        THEN the rows go A-Z, then Z-A, then back to the provider's order
+        WHEN the app mounts
+        THEN the rows are shown A-Z, not in the provider's order
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
-            assert keys_in_order(pilot) == self.AZURE_ORDER
+            assert keys_in_order(pilot) == self.ASC_ORDER
 
-            await pilot.press("S")
-            await pilot.pause()
+    async def test_s_cycles_descending_then_azure_then_back_to_ascending(self):
+        """
+        GIVEN the default A-Z sort on mount
+        WHEN the user presses S three times
+        THEN the rows go Z-A, then the provider's order, then back to A-Z
+        """
+        async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
             assert keys_in_order(pilot) == self.ASC_ORDER
 
             await pilot.press("S")
@@ -1747,9 +1753,13 @@ class TestSorting:
             await pilot.pause()
             assert keys_in_order(pilot) == self.AZURE_ORDER
 
+            await pilot.press("S")
+            await pilot.pause()
+            assert keys_in_order(pilot) == self.ASC_ORDER
+
     async def test_each_press_notifies_the_new_sort_mode(self):
         """
-        GIVEN the table in the provider's order
+        GIVEN the table in the default A-Z order
         WHEN the user presses S
         THEN the new sort mode is notified
         """
@@ -1758,32 +1768,28 @@ class TestSorting:
             await pilot.press("S")
             await pilot.pause()
 
-            assert any("a-z" in m.lower() for m in messages(pilot))
+            assert any("z-a" in m.lower() for m in messages(pilot))
 
     async def test_sort_does_not_reorder_the_working_copy(self):
         """
-        GIVEN an active A-Z sort
+        GIVEN the default A-Z sort
         WHEN the working copy is inspected
         THEN it is still in the order the provider returned
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
-            await pilot.press("S")
-            await pilot.pause()
             app = cast(AscApp, pilot.app)
 
             assert [s.key for s in app._all_settings] == self.AZURE_ORDER  # noqa: SLF001
 
     async def test_sort_survives_a_staged_mutation(self):
         """
-        GIVEN an active A-Z sort
+        GIVEN the default A-Z sort
         WHEN the user stages an add
         THEN the refreshed table is still sorted A-Z, new key included
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
-            await pilot.press("S")
-            await pilot.pause()
 
             await pilot.press("o")
             for ch in "AAA_NEW":
@@ -1798,41 +1804,40 @@ class TestSorting:
 
     async def test_sort_applies_within_an_active_filter(self):
         """
-        GIVEN an active A-Z sort
+        GIVEN the default A-Z sort
         WHEN a search filter is applied
         THEN the matching rows are still sorted A-Z
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
-            await pilot.press("S")
-            await pilot.pause()
             await pilot.press("/")
             await pilot.press("l")
             await pilot.pause()
 
             assert keys_in_order(pilot) == ["DATABASE_URL", "LOG_LEVEL", "NEW_TO_DELETE"]
 
-    async def test_slot_switch_resets_to_provider_order(self):
+    async def test_slot_switch_resets_to_default_ascending_sort(self):
         """
-        GIVEN an active A-Z sort on production
+        GIVEN the user has cycled away from the default A-Z sort
         WHEN the user switches to the staging slot
-        THEN staging is shown in the provider's order
+        THEN staging is shown back in the default A-Z order
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
             await pilot.press("S")
             await pilot.pause()
+            assert keys_in_order(pilot) == list(reversed(self.ASC_ORDER))
 
             await pilot.press("e")
             await wait_loaded(pilot)
 
-            assert keys_in_order(pilot) == ["LOG_LEVEL", "DATABASE_URL", "APP_ENV"]
+            assert keys_in_order(pilot) == ["APP_ENV", "DATABASE_URL", "LOG_LEVEL"]
 
-    async def test_app_switch_resets_to_provider_order(self):
+    async def test_app_switch_resets_to_default_ascending_sort(self):
         """
-        GIVEN an active A-Z sort
+        GIVEN the user has cycled away from the default A-Z sort
         WHEN the user switches app
-        THEN the reloaded table is in the provider's order again
+        THEN the reloaded table is back in the default A-Z order
         """
         async with AscApp(provider=_UnsortedProvider()).run_test(headless=True) as pilot:
             await wait_loaded(pilot)
@@ -1843,4 +1848,4 @@ class TestSorting:
             app._navigate_to(DEFAULT_GROUP, "web", PRODUCTION)  # noqa: SLF001
             await wait_loaded(pilot)
 
-            assert keys_in_order(pilot) == self.AZURE_ORDER
+            assert keys_in_order(pilot) == self.ASC_ORDER

@@ -12,7 +12,7 @@ HELP_TEXT = """\
  g g          Jump to top
  G            Jump to bottom
  e / Tab      Next slot
- S            Cycle sort (Azure order / A-Z / Z-A)
+ S            Cycle sort (A-Z / Z-A / Azure order)
 
  Edit
  ──────────────────────────────
