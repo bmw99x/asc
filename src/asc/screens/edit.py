@@ -48,10 +48,23 @@ class EditScreen(ModalScreen[tuple[str, bool] | None]):
         input.cursor_position = len(input.value)
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Keep the value input in the spelling the checkbox implies.
+
+        Ticking the box switches to the short ``vault/secret`` form; unticking
+        it puts the original raw value back, so an accidental toggle cannot
+        leave a bare "vault/secret" string behind as the literal value.
+        """
         if event.checkbox.id != "kv-mode":
             return
         input = self.query_one("#edit-value", Input)
-        input.placeholder = "vault-name/secret-name" if event.value else ""
+        if event.value:
+            input.placeholder = "vault-name/secret-name"
+            if self._kv_ref is not None:
+                input.value = f"{self._kv_ref.vault}/{self._kv_ref.secret}"
+        else:
+            input.placeholder = ""
+            input.value = self._value
+        input.cursor_position = len(input.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._try_save()

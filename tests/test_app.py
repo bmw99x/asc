@@ -4,8 +4,9 @@ from typing import cast
 
 from textual.widgets import Input, OptionList
 
-from asc.app import AscApp
+from asc.app import AscApp, main
 from asc.azure.client import AzureClientError
+from asc.config import Config, ConfigError
 from asc.constants import DEFAULT_APP, DEFAULT_GROUP, MOCK_DATA, PRODUCTION
 from asc.models import AppSetting, KeyVaultRef, compose_kv_ref
 from asc.providers import MockProvider
@@ -19,7 +20,8 @@ STAGING_ROWS = len(MOCK_DATA[DEFAULT_GROUP][DEFAULT_APP]["staging"])
 
 
 async def wait_loaded(pilot) -> None:
-    """Wait for all background workers (load / navigate) to finish."""
+    """Wait for all background workers (load / navigate / save) to finish."""
+    await pilot.pause()
     await pilot.app.workers.wait_for_complete()
     await pilot.pause()
 
@@ -1054,3 +1056,186 @@ class TestEditSticky:
             assert setting.value == "production"
             assert setting.slot_setting is False
             assert app.dirty is False
+
+
+class TestConfigStartup:
+    async def test_missing_config_notifies_mock_fallback(self, monkeypatch):
+        """
+        GIVEN no usable config on disk
+        WHEN the app is launched in config mode
+        THEN mock data is shown and a one-off notification explains why
+        """
+        monkeypatch.setattr("asc.app.load_config", lambda: {})
+
+        app = AscApp(_use_config=True)
+        async with app.run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            assert app._using_mock is True  # noqa: SLF001
+            assert table_of(pilot).row_count == PROD_ROWS
+            assert any("No config found" in m for m in messages(pilot))
+
+    async def test_invalid_config_is_not_swallowed(self, monkeypatch):
+        """
+        GIVEN a config file that exists but fails validation
+        WHEN the app is constructed
+        THEN the ConfigError surfaces instead of silently falling back to mocks
+        """
+        import pytest
+
+        def boom() -> Config:
+            raise ConfigError("config.json is not valid JSON: line 1")
+
+        monkeypatch.setattr("asc.app.load_config", boom)
+
+        with pytest.raises(ConfigError, match="not valid JSON"):
+            AscApp(_use_config=True)
+
+    def test_main_exits_nonzero_on_invalid_config(self, monkeypatch, capsys):
+        """
+        GIVEN a malformed config file
+        WHEN the CLI entry point runs
+        THEN it prints the error and exits non-zero without starting the TUI
+        """
+        import pytest
+
+        def boom() -> Config:
+            raise ConfigError("Invalid config for MyProduct/api: missing app_name")
+
+        monkeypatch.setattr("asc.app.load_config", boom)
+        monkeypatch.setattr(
+            AscApp, "run", lambda self: pytest.fail("TUI must not start on invalid config")
+        )
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 1
+        assert "missing app_name" in capsys.readouterr().err
+
+
+class TestNavigationWorkers:
+    async def test_slot_switch_has_no_artificial_delay(self):
+        """
+        GIVEN the app loaded against the in-memory mock provider
+        WHEN a slot switch is performed
+        THEN it completes promptly (no ported sleep on the navigation path)
+        """
+        import time
+
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            started = time.perf_counter()
+            app._navigate_to(DEFAULT_GROUP, DEFAULT_APP, "staging")  # noqa: SLF001
+            await wait_loaded(pilot)
+            elapsed = time.perf_counter() - started
+
+            assert app.current_slot == "staging"
+            assert elapsed < 0.3, f"navigation took {elapsed:.3f}s"
+
+    async def test_rapid_slot_switches_do_not_interleave(self):
+        """
+        GIVEN two navigations kicked off back to back
+        WHEN both workers have settled
+        THEN the last one wins and the table matches that slot exactly
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            app._navigate_to(DEFAULT_GROUP, DEFAULT_APP, "staging")  # noqa: SLF001
+            app._navigate_to(DEFAULT_GROUP, DEFAULT_APP, PRODUCTION)  # noqa: SLF001
+            await wait_loaded(pilot)
+
+            assert app.current_slot == PRODUCTION
+            assert table_of(pilot).row_count == PROD_ROWS
+            assert app.loading is False
+
+
+class TestEditKeyVaultQuirks:
+    async def test_saving_an_unchanged_vaultname_ref_stages_nothing(self):
+        """
+        GIVEN a setting stored in VaultName/SecretName reference form
+        WHEN the edit modal is opened and saved without changes
+        THEN nothing is staged (no silent rewrite to SecretUri form)
+        """
+        from asc.screens.edit import EditScreen
+
+        named_ref = "@Microsoft.KeyVault(VaultName=kv-myproduct-prod;SecretName=database-url)"
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            setting = next(s for s in app._all_settings if s.key == "DATABASE_URL")  # noqa: SLF001
+            setting.value = named_ref
+            app._refresh_table()  # noqa: SLF001
+            await move_to(pilot, "DATABASE_URL")
+
+            await pilot.press("i")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, EditScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app._undo_stack == []  # noqa: SLF001
+            assert app.dirty is False
+            assert setting.value == named_ref
+
+    async def test_unchecking_kv_mode_restores_the_raw_value(self):
+        """
+        GIVEN the edit modal pre-filled with "vault/secret" for a KV reference
+        WHEN the Key Vault reference checkbox is unticked
+        THEN the input is restored to the original raw reference string
+        """
+        from textual.widgets import Checkbox
+
+        from asc.screens.edit import EditScreen
+
+        raw = compose_kv_ref("kv-myproduct-prod", "database-url")
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "DATABASE_URL")
+
+            await pilot.press("i")
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, EditScreen)
+            assert screen.query_one("#edit-value", Input).value == (
+                "kv-myproduct-prod/database-url"
+            )
+
+            screen.query_one("#kv-mode", Checkbox).toggle()
+            await pilot.pause()
+
+            assert screen.query_one("#edit-value", Input).value == raw
+
+
+class TestBlockingProviderIo:
+    async def test_event_loop_keeps_running_during_a_slow_provider_call(self):
+        """
+        GIVEN a provider whose list_settings blocks for 300ms
+        WHEN a navigation runs
+        THEN app timers keep firing throughout, so the spinner stays animated
+        """
+        import time
+
+        class _SlowProvider(MockProvider):
+            def list_settings(self, slot: str) -> list[AppSetting]:
+                time.sleep(0.3)
+                return super().list_settings(slot)
+
+        ticks: list[float] = []
+        async with AscApp(provider=_SlowProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            app.set_interval(0.02, lambda: ticks.append(time.perf_counter()))
+            await pilot.pause()
+
+            app._navigate_to(DEFAULT_GROUP, DEFAULT_APP, "staging")  # noqa: SLF001
+            await wait_loaded(pilot)
+
+            assert app.current_slot == "staging"
+            assert table_of(pilot).row_count == STAGING_ROWS
+            gaps = [b - a for a, b in zip(ticks, ticks[1:], strict=False)]
+            assert gaps, "timer never fired"
+            assert max(gaps) < 0.2, f"loop stalled for {max(gaps):.3f}s"

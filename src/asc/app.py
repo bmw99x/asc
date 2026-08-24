@@ -1,8 +1,8 @@
 """Main application entry point."""
 
 import asyncio
-import contextlib
 import copy
+import sys
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -11,9 +11,16 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Header, Input, LoadingIndicator
 
 from asc.azure.client import AzureClientError
-from asc.config import Config, ConfigError, load_config, load_theme, save_theme
+from asc.config import (
+    CONFIG_PATH,
+    Config,
+    ConfigError,
+    load_config,
+    load_theme,
+    save_theme,
+)
 from asc.constants import APP_TITLE, DEFAULT_APP, DEFAULT_GROUP, GROUPS, PRODUCTION
-from asc.models import Action, ActionKind, AppSetting, KeyVaultRef
+from asc.models import Action, ActionKind, AppSetting, KeyVaultRef, values_equivalent
 from asc.providers import MockProvider, SettingsProvider
 from asc.providers_azure import AzureSettingsProvider
 from asc.screens.add import AddScreen
@@ -26,6 +33,10 @@ from asc.screens.save_confirm import SaveConfirmScreen
 from asc.widgets.main_view import MainView
 from asc.widgets.settings_table import SettingsTable
 from asc.widgets.slot_tabs import SlotTabs
+
+# Load and navigation share one exclusive worker group so a burst of slot or
+# context switches cannot interleave two half-finished loads.
+_NAV_GROUP = "navigation"
 
 
 class AscApp(App):
@@ -90,8 +101,12 @@ class AscApp(App):
         super().__init__()
         self._config: Config = {}
         if _use_config:
-            with contextlib.suppress(ConfigError):
-                self._config = load_config()
+            # A malformed config is a user error worth reporting: let ConfigError
+            # escape so main() can print it and exit instead of quietly showing
+            # mock data that looks like the real thing.
+            self._config = load_config()
+        # No config at all is the first-run case — fall back to mocks, but say so.
+        self._warn_no_config = _use_config and not self._config
         if not _use_config or not self._config:
             self._groups: dict[str, list[str]] = GROUPS
             default_group = DEFAULT_GROUP
@@ -135,11 +150,17 @@ class AscApp(App):
         saved_theme = load_theme()
         if saved_theme:
             self.theme = saved_theme
+        if self._warn_no_config:
+            self.notify(
+                f"No config found — showing mock data; edit {CONFIG_PATH}",
+                severity="information",
+                timeout=10,
+            )
         self._load_initial()
 
     # ------------------------------------------------------------------ load
 
-    @work
+    @work(exclusive=True, group=_NAV_GROUP)
     async def _load_initial(self) -> None:
         """Discover slots and load the default group/app on startup."""
         self.loading = True
@@ -168,12 +189,12 @@ class AscApp(App):
         self.current_app = app
 
         if refetch_slots:
-            self._slots = self._discover_slots()
+            self._slots = await self._discover_slots()
         if slot not in self._slots:
             slot = self._slots[0]
         self.current_slot = slot
 
-        self._all_settings = self._fetch_settings(slot)
+        self._all_settings = await self._fetch_settings(slot)
         self._baseline = copy.deepcopy(self._all_settings)
         self._undo_stack.clear()
         self.dirty = False
@@ -201,19 +222,23 @@ class AscApp(App):
             self.notify(f"Config missing {group}/{app}: {exc}", severity="error", timeout=8)
             return None
 
-    def _discover_slots(self) -> list[str]:
-        """Fetch the provider's slot list, falling back to production only."""
+    async def _discover_slots(self) -> list[str]:
+        """Fetch the provider's slot list, falling back to production only.
+
+        Runs off the event loop: ``az`` calls block for seconds and would
+        otherwise freeze the loading spinner.
+        """
         try:
-            slots = self._provider.list_slots()
+            slots = await asyncio.to_thread(self._provider.list_slots)
         except AzureClientError as exc:
             self.notify(f"Slot discovery failed: {exc}", severity="warning", timeout=8)
             return [PRODUCTION]
         return slots or [PRODUCTION]
 
-    def _fetch_settings(self, slot: str) -> list[AppSetting]:
-        """Fetch settings for *slot*, returning an empty list on failure."""
+    async def _fetch_settings(self, slot: str) -> list[AppSetting]:
+        """Fetch settings for *slot* off the loop, empty list on failure."""
         try:
-            return self._provider.list_settings(slot)
+            return await asyncio.to_thread(self._provider.list_settings, slot)
         except AzureClientError as exc:
             self.notify(f"Load failed: {exc}", severity="error", timeout=8)
             return []
@@ -279,7 +304,7 @@ class AscApp(App):
 
     # --------------------------------------------------------------- staging
 
-    def _stage_set(self, key: str, value: str, slot_setting: bool = False) -> None:
+    def _stage_set(self, key: str, value: str, *, slot_setting: bool) -> None:
         """Stage a set (add or edit) in the local working copy.
 
         The provider is NOT written here — see :meth:`_commit_staged`.
@@ -431,11 +456,13 @@ class AscApp(App):
         deletes = [key for key in baseline if key not in current]
         return upserts, deletes
 
-    def _commit_staged(self) -> None:
+    @work(exclusive=True, group="save")
+    async def _commit_staged(self) -> None:
         """Flush the net diff to the provider in a single apply call.
 
-        On failure the stage and undo stack are left intact so the user can
-        retry; on success the baseline is re-captured.
+        The apply runs off the event loop so the spinner keeps animating during
+        the (slow) ``az`` write. On failure the stage and undo stack are left
+        intact so the user can retry; on success the baseline is re-captured.
         """
         upserts, deletes = self._net_changes()
         if not upserts and not deletes:
@@ -446,7 +473,9 @@ class AscApp(App):
             return
 
         try:
-            self._provider.apply(self.current_slot, upserts, deletes)
+            await asyncio.to_thread(
+                self._provider.apply, self.current_slot, upserts, deletes
+            )
         except AzureClientError as exc:
             self.notify(f"Save failed: {exc}", severity="error", timeout=8)
             return
@@ -460,14 +489,13 @@ class AscApp(App):
 
     # ------------------------------------------------------------ navigation
 
-    @work
+    @work(exclusive=True, group=_NAV_GROUP)
     async def _navigate_to(self, group: str, app: str, slot: str) -> None:
         """Switch to group/app/slot unconditionally, dropping staged changes."""
         if self.current_group:
             self._group_app_memory[self.current_group] = self.current_app
         refetch_slots = group != self.current_group or app != self.current_app
         self.loading = True
-        await asyncio.sleep(0.4)
         await self._load_context(group, app, slot, refetch_slots=refetch_slots)
         self.loading = False
         self._get_table().focus()
@@ -628,9 +656,9 @@ class AscApp(App):
         def on_save(result: tuple[str, bool] | None) -> None:
             if result is not None:
                 value, sticky = result
-                if value != current_value:
+                if not values_equivalent(value, current_value):
                     # A value change carries the flag along in one SET.
-                    self._stage_set(key, value, sticky)
+                    self._stage_set(key, value, slot_setting=sticky)
                     self.notify(f"Staged update to {key}", timeout=2)
                 elif sticky != current_sticky:
                     # Only the checkbox moved — that is a sticky toggle.
@@ -664,7 +692,7 @@ class AscApp(App):
         def on_save(result: tuple[str, str, bool] | None) -> None:
             if result is not None:
                 key, value, sticky = result
-                self._stage_set(key, value, sticky)
+                self._stage_set(key, value, slot_setting=sticky)
                 self.notify(f"Staged add {key}", timeout=2)
             self._get_table().focus()
 
@@ -760,7 +788,12 @@ class AscApp(App):
 
 
 def main() -> None:
-    AscApp(_use_config=True).run()
+    try:
+        app = AscApp(_use_config=True)
+    except ConfigError as exc:
+        print(f"asc: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    app.run()
 
 
 if __name__ == "__main__":
