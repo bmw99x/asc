@@ -31,16 +31,6 @@ class SettingsProvider(Protocol):
         ...
 
 
-def _to_setting(raw: dict) -> AppSetting:
-    return AppSetting(
-        key=raw["name"], value=raw["value"], slot_setting=bool(raw.get("slotSetting", False))
-    )
-
-
-def _to_raw(setting: AppSetting) -> dict:
-    return {"name": setting.key, "value": setting.value, "slotSetting": setting.slot_setting}
-
-
 class MockProvider:
     """In-memory provider seeded from MOCK_DATA for the given group and app."""
 
@@ -52,13 +42,13 @@ class MockProvider:
         return [PRODUCTION, *sorted(slots)] if PRODUCTION in self._data else sorted(slots)
 
     def list_settings(self, slot: str) -> list[AppSetting]:
-        return [_to_setting(raw) for raw in self._data.get(slot, [])]
+        return [AppSetting.from_raw(raw) for raw in self._data.get(slot, [])]
 
     def apply(self, slot: str, upserts: list[AppSetting], deletes: list[str]) -> None:
         raws = self._data.setdefault(slot, [])
         by_key = {raw["name"]: raw for raw in raws}
         for setting in upserts:
-            by_key[setting.key] = _to_raw(setting)
+            by_key[setting.key] = setting.to_raw()
         for key in deletes:
             by_key.pop(key, None)
         self._data[slot] = list(by_key.values())

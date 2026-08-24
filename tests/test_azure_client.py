@@ -82,3 +82,10 @@ def test_error_raises_with_stderr(client, monkeypatch):
     run_capture(monkeypatch, FakeResult(returncode=1, stderr="boom"))
     with pytest.raises(AzureClientError, match="boom"):
         client.list_slots()
+
+
+def test_empty_slot_name_is_not_treated_as_production(client, monkeypatch):
+    """An empty slot string is passed through rather than silently dropped."""
+    calls = run_capture(monkeypatch, FakeResult(stdout="[]"))
+    client.list_settings(slot="")
+    assert calls[0][-2:] == ["--slot", ""]

@@ -140,7 +140,9 @@ class AzureClient:
         return out.removesuffix("\n")
 
     def _slot_args(self, slot: str | None) -> list[str]:
-        return ["--slot", slot] if slot else []
+        # Only None means production: an empty string is a caller error, not a
+        # silent "use production".
+        return ["--slot", slot] if slot is not None else []
 
     def _run(self, cmd: list[str]) -> str:
         """Run a command, returning stdout. Raises AzureClientError on failure."""

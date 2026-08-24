@@ -20,16 +20,6 @@ class _Client(Protocol):
     def delete_settings(self, names: list[str], slot: str | None = None) -> None: ...
 
 
-def _to_setting(raw: dict) -> AppSetting:
-    return AppSetting(
-        key=raw["name"], value=raw["value"], slot_setting=bool(raw.get("slotSetting", False))
-    )
-
-
-def _to_raw(setting: AppSetting) -> dict:
-    return {"name": setting.key, "value": setting.value, "slotSetting": setting.slot_setting}
-
-
 class AzureSettingsProvider:
     """Wraps AzureClient, translating the "production" slot name to None."""
 
@@ -46,12 +36,12 @@ class AzureSettingsProvider:
 
     def list_settings(self, slot: str) -> list[AppSetting]:
         raws = self._client.list_settings(slot=self._az_slot(slot))
-        return [_to_setting(raw) for raw in raws]
+        return [AppSetting.from_raw(raw) for raw in raws]
 
     def apply(self, slot: str, upserts: list[AppSetting], deletes: list[str]) -> None:
         az_slot = self._az_slot(slot)
         if upserts:
-            self._client.set_settings([_to_raw(s) for s in upserts], slot=az_slot)
+            self._client.set_settings([s.to_raw() for s in upserts], slot=az_slot)
         if deletes:
             self._client.delete_settings(deletes, slot=az_slot)
 

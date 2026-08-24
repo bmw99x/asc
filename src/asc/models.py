@@ -51,6 +51,21 @@ def parse_kv_ref(value: str) -> KeyVaultRef | None:
     return None
 
 
+def values_equivalent(a: str, b: str) -> bool:
+    """Return True if two setting values mean the same thing.
+
+    Key Vault references have two interchangeable spellings (SecretUri and
+    VaultName/SecretName), so two different strings can point at the same
+    secret. Treating them as equal keeps a no-op edit from staging a rewrite.
+    """
+    if a == b:
+        return True
+    ref_a, ref_b = parse_kv_ref(a), parse_kv_ref(b)
+    if ref_a is None or ref_b is None:
+        return False
+    return (ref_a.vault, ref_a.secret) == (ref_b.vault, ref_b.secret)
+
+
 def compose_kv_ref(vault: str, secret: str) -> str:
     """Compose a Key Vault reference in SecretUri format."""
     return f"@Microsoft.KeyVault(SecretUri=https://{vault}.vault.azure.net/secrets/{secret})"
@@ -76,6 +91,19 @@ class AppSetting:
     def kv_ref(self) -> "KeyVaultRef | None":
         """Parse and return the Key Vault reference, if present."""
         return parse_kv_ref(self.value)
+
+    @classmethod
+    def from_raw(cls, raw: dict) -> "AppSetting":
+        """Build a setting from the raw ``az webapp config appsettings`` shape."""
+        return cls(
+            key=raw["name"],
+            value=raw["value"],
+            slot_setting=bool(raw.get("slotSetting", False)),
+        )
+
+    def to_raw(self) -> dict:
+        """Render this setting in the raw shape the Azure CLI expects."""
+        return {"name": self.key, "value": self.value, "slotSetting": self.slot_setting}
 
 
 class ActionKind(Enum):
