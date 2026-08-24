@@ -129,6 +129,8 @@ class AzureClient:
                 vault,
                 "--name",
                 secret,
+                "--subscription",
+                self._sub,
                 "--query",
                 "value",
                 "--output",

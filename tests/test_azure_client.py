@@ -73,8 +73,9 @@ def test_delete_settings(client, monkeypatch):
 
 
 def test_resolve_kv_secret_strips_newline(client, monkeypatch):
-    run_capture(monkeypatch, FakeResult(stdout="s3cret\n"))
+    calls = run_capture(monkeypatch, FakeResult(stdout="s3cret\n"))
     assert client.resolve_kv_secret("kv-prod", "DbPassword") == "s3cret"
+    assert "--subscription" in calls[0]
 
 
 def test_error_raises_with_stderr(client, monkeypatch):
