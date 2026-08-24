@@ -8,11 +8,11 @@ from asc.app import AscApp, main
 from asc.azure.client import AzureClientError
 from asc.config import Config, ConfigError
 from asc.constants import DEFAULT_APP, DEFAULT_GROUP, MOCK_DATA, PRODUCTION
-from asc.models import AppSetting, KeyVaultRef, compose_kv_ref
+from asc.models import ActionKind, AppSetting, KeyVaultRef, compose_kv_ref
 from asc.providers import MockProvider
 from asc.screens.confirm import ConfirmScreen
 from asc.screens.context_picker import ContextPickerScreen
-from asc.screens.save_confirm import SaveConfirmScreen
+from asc.screens.save_confirm import SaveConfirmScreen, diff_line
 from asc.widgets.settings_table import SettingsTable
 
 PROD_ROWS = len(MOCK_DATA[DEFAULT_GROUP][DEFAULT_APP][PRODUCTION])
@@ -674,6 +674,131 @@ class TestNetChanges:
         upserts, deletes = app._net_changes()  # noqa: SLF001
         assert upserts == []
         assert deletes == ["B"]
+
+
+class TestSaveConfirmDiff:
+    """The confirm diff must describe the net write, not the undo history."""
+
+    def _app(self, baseline: list[AppSetting], current: list[AppSetting]) -> AscApp:
+        app = AscApp(provider=MockProvider())
+        app._baseline = baseline  # noqa: SLF001
+        app._all_settings = current  # noqa: SLF001
+        return app
+
+    def test_new_key_shows_an_add_line(self):
+        """
+        GIVEN a key absent from the baseline
+        WHEN the diff is built
+        THEN one add (SET with no previous value) line is shown
+        """
+        app = self._app([], [AppSetting("A", "1")])
+        actions = app._diff_actions()  # noqa: SLF001
+        assert [(a.kind, a.key, a.previous_value) for a in actions] == [
+            (ActionKind.SET, "A", None)
+        ]
+
+    def test_edited_key_shows_an_edit_line_with_both_values(self):
+        """
+        GIVEN a baseline key whose value changed
+        WHEN the diff is built
+        THEN the line carries the old and new values
+        """
+        app = self._app([AppSetting("A", "1")], [AppSetting("A", "2")])
+        (action,) = app._diff_actions()  # noqa: SLF001
+        assert (action.kind, action.previous_value, action.value) == (ActionKind.SET, "1", "2")
+        assert "1 → 2" in diff_line(action).plain
+
+    def test_sticky_only_change_shows_one_toggle_line(self):
+        """
+        GIVEN only the slot_setting flag changed
+        WHEN the diff is built
+        THEN a single sticky-toggle line is shown, not a value edit
+        """
+        app = self._app([AppSetting("A", "1")], [AppSetting("A", "1", slot_setting=True)])
+        (action,) = app._diff_actions()  # noqa: SLF001
+        assert action.kind == ActionKind.TOGGLE_STICKY
+        assert "slot setting → on" in diff_line(action).plain
+
+    def test_delete_shows_the_value_being_lost(self):
+        """
+        GIVEN a baseline key removed from the working copy
+        WHEN the diff is built
+        THEN a delete line naming its value is shown
+        """
+        app = self._app([AppSetting("A", "secret-ish")], [])
+        (action,) = app._diff_actions()  # noqa: SLF001
+        assert action.kind == ActionKind.DELETE
+        assert "secret-ish" in diff_line(action).plain
+
+    def test_edit_then_undo_shows_no_lines(self):
+        """
+        GIVEN a value that was edited and restored
+        WHEN the diff is built
+        THEN nothing is listed
+        """
+        app = self._app([AppSetting("A", "1")], [AppSetting("A", "1")])
+        assert app._diff_actions() == []  # noqa: SLF001
+
+    async def test_add_toggle_then_delete_the_same_key_saves_nothing(self):
+        """
+        GIVEN a key that was added, toggled sticky, and then deleted again
+        WHEN the user presses s
+        THEN no confirm modal opens and the stage is reported as empty
+        """
+        provider = MockProvider()
+        before = {s.key for s in provider.list_settings(PRODUCTION)}
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await pilot.press("o")
+            for ch in "TEMP":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            for ch in "x":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await pilot.pause()
+            await move_to(pilot, "TEMP")
+            await pilot.press("t")
+            await pilot.pause()
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            await pilot.press("s")
+            await pilot.pause()
+
+            assert not isinstance(pilot.app.screen, SaveConfirmScreen)
+            assert any("nothing to save" in m.lower() for m in messages(pilot))
+            assert app.dirty is False
+            assert {s.key for s in provider.list_settings(PRODUCTION)} == before
+
+    async def test_confirm_diff_lists_the_net_write_not_the_history(self):
+        """
+        GIVEN a value edited twice over
+        WHEN the confirm screen opens
+        THEN it lists one line for that key, not one per keystroke history entry
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await move_to(pilot, "LOG_LEVEL")
+            for value in ("warn", "error"):
+                await pilot.press("i")
+                await pilot.pause()
+                pilot.app.screen.query_one("#edit-value", Input).value = value
+                await pilot.press("enter")
+                await pilot.pause()
+
+            assert len(app._undo_stack) == 2  # noqa: SLF001
+
+            await pilot.press("s")
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, SaveConfirmScreen)
+            assert len(screen._actions) == 1  # noqa: SLF001
+            assert "info → error" in diff_line(screen._actions[0]).plain  # noqa: SLF001
 
 
 class TestSlotSwitching:

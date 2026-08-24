@@ -7,16 +7,29 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label
 
-from asc.models import Action, ActionKind
+from asc.models import Action, ActionKind, parse_kv_ref
+
+#: Values longer than this are elided so one change stays on one line.
+MAX_VALUE_WIDTH = 40
+
+
+def display_value(value: str) -> str:
+    """Render a setting value for the diff: short, and never a raw KV blob."""
+    ref = parse_kv_ref(value)
+    if ref is not None:
+        return f"{ref.vault}/{ref.secret}"
+    if len(value) > MAX_VALUE_WIDTH:
+        return value[: MAX_VALUE_WIDTH - 1] + "…"
+    return value
 
 
 def diff_line(action: Action) -> Text:
-    """Build a single coloured diff line for one staged action.
+    """Build a single coloured diff line for one pending change.
 
-    + Added settings in green
-    - Removed settings in red
+    + Added settings in green, with the value to be written
+    - Removed settings in red, with the value being lost
     ~ Renamed settings (old → new) in yellow
-    * Edited settings in blue
+    * Edited settings in blue, as ``old → new``
     ~ Toggled slot-setting flag in magenta
     SET lines get a trailing " [slot]" when the action's slot_setting is True.
     """
@@ -24,15 +37,17 @@ def diff_line(action: Action) -> Text:
         old = action.old_key or "?"
         return Text(f"~  {old}  →  {action.key}", style="yellow")
     if action.kind == ActionKind.DELETE:
-        return Text(f"-  {action.key}", style="red")
+        return Text(f"-  {action.key} = {display_value(action.value)}", style="red")
     if action.kind == ActionKind.TOGGLE_STICKY:
         state = "on" if action.slot_setting else "off"
         return Text(f"~  {action.key}  slot setting → {state}", style="magenta")
 
     suffix = " [slot]" if action.slot_setting else ""
+    new = display_value(action.value)
     if action.previous_value is None:
-        return Text(f"+  {action.key}{suffix}", style="green")
-    return Text(f"*  {action.key}{suffix}", style="blue")
+        return Text(f"+  {action.key} = {new}{suffix}", style="green")
+    old_value = display_value(action.previous_value)
+    return Text(f"*  {action.key}  {old_value} → {new}{suffix}", style="blue")
 
 
 class SaveConfirmScreen(ModalScreen[bool]):

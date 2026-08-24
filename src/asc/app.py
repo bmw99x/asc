@@ -456,6 +456,63 @@ class AscApp(App):
         deletes = [key for key in baseline if key not in current]
         return upserts, deletes
 
+    def _diff_actions(self) -> list[Action]:
+        """Render the pending write as actions for the save-confirm diff.
+
+        The undo stack is a history, not a diff: it can hold entries that
+        cancel each other out (add-then-delete, edit-then-undo). The confirm
+        screen must show what :meth:`_commit_staged` will actually write, so
+        the lines are derived from the same baseline diff.
+        """
+        baseline = {s.key: s for s in self._baseline}
+        upserts, deletes = self._net_changes()
+
+        actions: list[Action] = []
+        for s in upserts:
+            before = baseline.get(s.key)
+            if before is None:
+                actions.append(
+                    Action(
+                        kind=ActionKind.SET,
+                        key=s.key,
+                        value=s.value,
+                        slot_setting=s.slot_setting,
+                    )
+                )
+            elif before.value == s.value:
+                # Only the flag moved — show it as the sticky toggle it is.
+                actions.append(
+                    Action(
+                        kind=ActionKind.TOGGLE_STICKY,
+                        key=s.key,
+                        value=s.value,
+                        slot_setting=s.slot_setting,
+                        previous_slot_setting=before.slot_setting,
+                    )
+                )
+            else:
+                actions.append(
+                    Action(
+                        kind=ActionKind.SET,
+                        key=s.key,
+                        value=s.value,
+                        previous_value=before.value,
+                        slot_setting=s.slot_setting,
+                        previous_slot_setting=before.slot_setting,
+                    )
+                )
+        for key in deletes:
+            before = baseline[key]
+            actions.append(
+                Action(
+                    kind=ActionKind.DELETE,
+                    key=key,
+                    value=before.value,
+                    slot_setting=before.slot_setting,
+                )
+            )
+        return actions
+
     @work(exclusive=True, group="save")
     async def _commit_staged(self) -> None:
         """Flush the net diff to the provider in a single apply call.
@@ -751,12 +808,21 @@ class AscApp(App):
             self.notify("No unsaved changes", timeout=2)
             return
 
+        actions = self._diff_actions()
+        if not actions:
+            # The stage collapsed to nothing (e.g. add then delete the same key).
+            self._undo_stack.clear()
+            self.dirty = False
+            self._update_subtitle()
+            self.notify("Nothing to save", timeout=2)
+            return
+
         def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
                 self._commit_staged()
             self._get_table().focus()
 
-        self.push_screen(SaveConfirmScreen(list(self._undo_stack)), on_confirm)
+        self.push_screen(SaveConfirmScreen(actions), on_confirm)
 
     def action_undo(self) -> None:
         """Reverse the most recent staged mutation."""
