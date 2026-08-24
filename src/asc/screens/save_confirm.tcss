@@ -1,0 +1,35 @@
+SaveConfirmScreen {
+    align: center middle;
+}
+
+#save-confirm-container {
+    width: 64;
+    height: auto;
+    max-height: 80vh;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $success;
+}
+
+#save-confirm-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#save-confirm-diff {
+    height: auto;
+    max-height: 20;
+    margin-bottom: 1;
+    background: $surface-darken-3;
+    padding: 1;
+}
+
+#save-confirm-buttons {
+    height: auto;
+    align: right middle;
+    margin-top: 1;
+}
+
+#save-confirm-buttons Button {
+    margin-left: 1;
+}

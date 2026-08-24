@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+
+# Build / distribution
+dist/
+build/
+wheels/
+*.egg-info/
+
+# Tools
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.ropeproject/
+
+# uv
+.python-version
+
+# OS
+.DS_Store
+
+.codemap/

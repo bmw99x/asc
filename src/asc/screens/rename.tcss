@@ -1,0 +1,30 @@
+RenameScreen {
+    align: center middle;
+}
+
+#rename-container {
+    width: 64;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#rename-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#rename-key {
+    margin-bottom: 1;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#rename-key:focus {
+    border: tall $primary;
+}
+
+#rename-hint {
+    color: $text-muted;
+}
