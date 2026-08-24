@@ -545,6 +545,63 @@ class TestSaveFlow:
             assert any("no unsaved changes" in m.lower() for m in messages(pilot))
 
 
+class TestQuit:
+    async def test_q_with_no_changes_quits_immediately(self):
+        """
+        GIVEN a clean stage
+        WHEN the user presses q
+        THEN the app exits without a prompt
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await pilot.press("q")
+            await pilot.pause()
+
+            assert not isinstance(pilot.app.screen, ConfirmScreen)
+            assert pilot.app.is_running is False
+
+    async def test_q_when_dirty_prompts_and_declining_keeps_the_stage(self):
+        """
+        GIVEN staged changes
+        WHEN the user presses q and declines the prompt
+        THEN the app is still running with the stage intact
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("q")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ConfirmScreen)
+            await pilot.press("n")
+            await pilot.pause()
+
+            assert app.is_running is True
+            assert app.dirty is True
+            assert len(app._undo_stack) == 1  # noqa: SLF001
+
+    async def test_q_when_dirty_quits_on_confirm(self):
+        """
+        GIVEN staged changes
+        WHEN the user presses q and confirms
+        THEN the app exits, discarding the stage
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("q")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ConfirmScreen)
+            await pilot.press("y")
+            await pilot.pause()
+
+            assert pilot.app.is_running is False
+
+
 class TestNetChanges:
     """Unit tests for the baseline → net diff collapse (no Pilot)."""
 

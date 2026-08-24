@@ -568,6 +568,24 @@ class AscApp(App):
 
     # --------------------------------------------------------------- actions
 
+    async def action_quit(self) -> None:
+        """Quit, prompting first when there are staged changes to lose."""
+        if not self.dirty:
+            self.exit()
+            return
+
+        n = len(self._undo_stack)
+        noun = "change" if n == 1 else "changes"
+        msg = f"Discard {n} staged {noun} and quit?"
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.exit()
+            else:
+                self._get_table().focus()
+
+        self.push_screen(ConfirmScreen(msg), on_confirm)
+
     def action_toggle_help(self) -> None:
         self.push_screen(HelpScreen())
 
