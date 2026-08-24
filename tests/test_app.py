@@ -42,6 +42,11 @@ def badge_of(pilot, key: str) -> str:
     raise AssertionError(f"row {key} not in table")
 
 
+def keys_in_order(pilot) -> list[str]:
+    """Return the table's row keys in the order they appear on screen."""
+    return [str(row.key.value) for row in table_of(pilot).ordered_rows]
+
+
 async def move_to(pilot, key: str) -> None:
     """Move the table cursor onto the row with the given key."""
     table = table_of(pilot)
@@ -99,6 +104,45 @@ class _FailingProvider:
         if self._fail_on_resolve:
             raise AzureClientError("simulated resolve failure")
         return self._inner.resolve_kv(ref)
+
+
+class _PostApplyProvider(MockProvider):
+    """Provider that, once written to, returns sorted settings plus a new one.
+
+    Stands in for Azure normalizing the order and another actor (the platform,
+    a colleague) adding a setting behind the app's back.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._applied = False
+
+    def apply(self, slot: str, upserts: list[AppSetting], deletes: list[str]) -> None:
+        super().apply(slot, upserts, deletes)
+        self._applied = True
+
+    def list_settings(self, slot: str) -> list[AppSetting]:
+        settings = super().list_settings(slot)
+        if self._applied:
+            settings.append(AppSetting(key="WEBSITE_PLATFORM", value="managed"))
+        return sorted(settings, key=lambda s: s.key, reverse=True)
+
+
+class _RefreshFailProvider(MockProvider):
+    """Provider whose apply succeeds but whose next list_settings fails."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._applied = False
+
+    def apply(self, slot: str, upserts: list[AppSetting], deletes: list[str]) -> None:
+        super().apply(slot, upserts, deletes)
+        self._applied = True
+
+    def list_settings(self, slot: str) -> list[AppSetting]:
+        if self._applied:
+            raise AzureClientError("simulated list failure")
+        return super().list_settings(slot)
 
 
 class TestMount:
@@ -613,6 +657,76 @@ class TestSaveFlow:
 
             assert not isinstance(pilot.app.screen, SaveConfirmScreen)
             assert any("no unsaved changes" in m.lower() for m in messages(pilot))
+
+
+class TestSaveRefresh:
+    async def test_save_reloads_settings_from_the_provider(self):
+        """
+        GIVEN a provider that reorders settings and adds one of its own on apply
+        WHEN the user confirms a save
+        THEN the table and the baseline hold the freshly fetched settings
+        """
+        provider = _PostApplyProvider()
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await move_to(pilot, "LOG_LEVEL")
+            await pilot.press("t")
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("y")
+            await wait_loaded(pilot)
+
+            fetched = provider.list_settings(PRODUCTION)
+            assert keys_in_order(pilot) == [s.key for s in fetched]
+            assert "WEBSITE_PLATFORM" in keys_in_order(pilot)
+            assert app._all_settings == fetched  # noqa: SLF001
+            assert app._baseline == fetched  # noqa: SLF001
+
+    async def test_save_refresh_keeps_cursor_on_the_selected_key(self):
+        """
+        GIVEN the cursor is on LOG_LEVEL when a save is confirmed
+        WHEN the post-save refetch reorders the rows
+        THEN the cursor is still on LOG_LEVEL
+        """
+        async with AscApp(provider=_PostApplyProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "LOG_LEVEL")
+            await pilot.press("t")
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("y")
+            await wait_loaded(pilot)
+
+            assert table_of(pilot).selected_key == "LOG_LEVEL"
+
+    async def test_refresh_failure_after_save_keeps_working_copy_and_warns(self):
+        """
+        GIVEN a provider whose apply succeeds but whose next list raises
+        WHEN the user confirms a save
+        THEN the post-save working copy survives and a warning is raised
+        """
+        provider = _RefreshFailProvider()
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await move_to(pilot, "LOG_LEVEL")
+            await pilot.press("t")
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("y")
+            await wait_loaded(pilot)
+
+            assert app.dirty is False
+            assert app._undo_stack == []  # noqa: SLF001
+            assert table_of(pilot).row_count == PROD_ROWS
+            local = {s.key: s.slot_setting for s in app._all_settings}  # noqa: SLF001
+            assert local["LOG_LEVEL"] is True
+            assert app._baseline == app._all_settings  # noqa: SLF001
+            assert any("refresh failed" in m.lower() for m in messages(pilot))
 
 
 class TestQuit:

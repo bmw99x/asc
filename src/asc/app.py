@@ -521,7 +521,8 @@ class AscApp(App):
 
         The apply runs off the event loop so the spinner keeps animating during
         the (slow) ``az`` write. On failure the stage and undo stack are left
-        intact so the user can retry; on success the baseline is re-captured.
+        intact so the user can retry; on success the settings are re-fetched so
+        the UI shows what the provider now holds, not the local working copy.
         """
         upserts, deletes = self._net_changes()
         if not upserts and not deletes:
@@ -540,11 +541,31 @@ class AscApp(App):
             return
 
         self._undo_stack.clear()
-        self._baseline = copy.deepcopy(self._all_settings)
         self.dirty = False
+        await self._resync_after_save()
         self._update_subtitle()
         n = len(upserts) + len(deletes)
         self.notify(f"Saved {n} change{'' if n == 1 else 's'}", timeout=2)
+
+    async def _resync_after_save(self) -> None:
+        """Replace the working copy with what the provider holds post-apply.
+
+        The write is only half the story: Azure may normalize ordering or
+        values, and another actor may have changed the slot meanwhile. Both the
+        working copy and the baseline are therefore taken from the fetch, not
+        from the local copy, so the next diff is against reality. A failed
+        refetch is not a failed save — the post-save working copy is kept and
+        the user is warned that the view may be stale.
+        """
+        try:
+            settings = await asyncio.to_thread(self._provider.list_settings, self.current_slot)
+        except AzureClientError as exc:
+            self._baseline = copy.deepcopy(self._all_settings)
+            self.notify(f"Saved, but refresh failed: {exc}", severity="warning", timeout=8)
+            return
+        self._all_settings = settings
+        self._baseline = copy.deepcopy(settings)
+        self._refresh_table()
 
     # ------------------------------------------------------------ navigation
 
