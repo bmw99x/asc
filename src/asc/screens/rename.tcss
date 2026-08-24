@@ -1,8 +1,8 @@
-AddScreen {
+RenameScreen {
     align: center middle;
 }
 
-#add-container {
+#rename-container {
     width: 64;
     height: auto;
     padding: 2 3;
@@ -10,30 +10,21 @@ AddScreen {
     border: round $primary;
 }
 
-#add-title {
+#rename-title {
     text-style: bold;
     margin-bottom: 1;
 }
 
-#add-key,
-#add-value {
+#rename-key {
     margin-bottom: 1;
     border: tall $primary-darken-2;
     background: $surface-darken-1;
 }
 
-#add-key:focus,
-#add-value:focus {
+#rename-key:focus {
     border: tall $primary;
 }
 
-#add-error {
-    color: $error;
-    height: 1;
-    margin-bottom: 1;
-}
-
-#add-hint {
+#rename-hint {
     color: $text-muted;
-    margin-bottom: 1;
 }

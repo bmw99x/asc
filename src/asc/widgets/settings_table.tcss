@@ -13,6 +13,7 @@
 #env-table > .datatable--cursor {
     background: $primary;
     color: $text;
+    text-style: bold;
 }
 
 #env-table > .datatable--even-row {

@@ -38,10 +38,18 @@ class AscApp(App):
     the slot loaded) and flushed in a single ``provider.apply`` call.
     """
 
+    # Every widget and screen owns its own stylesheet; app.tcss holds only the
+    # app-level chrome. Each rule lives in exactly one file.
     CSS_PATH = [
         "app.tcss",
-        "widgets/slot_tabs.tcss",
         "widgets/main_view.tcss",
+        "widgets/settings_table.tcss",
+        "widgets/slot_tabs.tcss",
+        "screens/add.tcss",
+        "screens/confirm.tcss",
+        "screens/edit.tcss",
+        "screens/help.tcss",
+        "screens/rename.tcss",
         "screens/save_confirm.tcss",
     ]
     TITLE = APP_TITLE
