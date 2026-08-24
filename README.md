@@ -28,16 +28,18 @@ This tool is experimental and provided as-is. The author is not responsible for 
 
 ## Install
 
-```bash
-uv tool install git+https://github.com/bmw99x/asc
-```
-
-Or clone and install locally:
+Install from a local clone:
 
 ```bash
-git clone https://github.com/bmw99x/asc
+git clone <this-repo> asc
 cd asc
 uv tool install .
+```
+
+The project has no published git remote yet. Once it is pushed, `https://github.com/bmw99x/asc` is the expected location, and the install becomes:
+
+```bash
+uv tool install git+https://github.com/bmw99x/asc
 ```
 
 ## Configuration
@@ -113,13 +115,13 @@ asc
 | `Y`           | Copy value (resolve Key Vault reference)    |
 | `p`           | Switch group / app                          |
 | `?`           | Toggle help                                 |
-| `q`           | Quit                                        |
+| `q`           | Quit (prompts if changes are staged)        |
 
 Clicking a slot tab or the app label in the tab bar performs the same navigation as `e`/`Tab` and `p`. Double-clicking a row also opens the edit modal.
 
 ### Staged changes
 
-Edits, additions, renames, deletions, and sticky-flag toggles are all held in a local stage — nothing is written to Azure until you press `s`. The save screen shows a colour-coded diff of every pending change:
+Edits, additions, renames, deletions, and sticky-flag toggles are all held in a local stage — nothing is written to Azure until you press `s`. The save screen shows a colour-coded diff of the write that is about to happen (derived from the settings as loaded, so changes that cancel each other out never appear):
 
 - **Green** — new setting added
 - **Red** — setting deleted
@@ -129,7 +131,7 @@ Edits, additions, renames, deletions, and sticky-flag toggles are all held in a 
 
 Press `y` (or click Save) to commit all staged changes to Azure, or `n`/`Esc` (or click Cancel) to go back and keep editing. If any write fails the remaining staged changes are left intact so you can retry.
 
-Pressing `u` reverses the most recent staged change without touching Azure.
+Pressing `u` reverses the most recent staged change without touching Azure. Pressing `q` with staged changes asks for confirmation before discarding them, and switching slot, app or group is refused while a save is still being written.
 
 ### Deployment slots
 
