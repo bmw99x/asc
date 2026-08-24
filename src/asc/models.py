@@ -133,6 +133,23 @@ class AppSetting:
         return {"name": self.key, "value": self.value, "slotSetting": self.slot_setting}
 
 
+class SortMode(Enum):
+    """Display order for the settings table.
+
+    A purely presentational concern: the working copy always keeps the order
+    the provider returned. Values double as the label shown to the user.
+    """
+
+    AZURE = "Azure order"
+    KEY_ASC = "Key A-Z"
+    KEY_DESC = "Key Z-A"
+
+    def next(self) -> "SortMode":
+        """Return the next mode in the cycle, wrapping back to AZURE."""
+        modes = list(SortMode)
+        return modes[(modes.index(self) + 1) % len(modes)]
+
+
 class ActionKind(Enum):
     """Types of reversible mutations."""
 

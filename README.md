@@ -100,6 +100,7 @@ asc
 | `g g`         | Jump to top                                 |
 | `G`           | Jump to bottom                              |
 | `e` / `Tab`   | Next slot                                   |
+| `S`           | Cycle sort (Azure order / A-Z / Z-A)        |
 | `i` / `Enter` | Edit selected value                         |
 | `r`           | Rename selected key                         |
 | `o`           | Add new setting                             |

@@ -20,7 +20,14 @@ from asc.config import (
     save_theme,
 )
 from asc.constants import APP_TITLE, DEFAULT_APP, DEFAULT_GROUP, GROUPS, PRODUCTION
-from asc.models import Action, ActionKind, AppSetting, KeyVaultRef, values_equivalent
+from asc.models import (
+    Action,
+    ActionKind,
+    AppSetting,
+    KeyVaultRef,
+    SortMode,
+    values_equivalent,
+)
 from asc.providers import MockProvider, SettingsProvider
 from asc.providers_azure import AzureSettingsProvider
 from asc.screens.add import AddScreen
@@ -90,6 +97,7 @@ class AscApp(App):
         Binding("t", "toggle_sticky", "Sticky"),
         Binding("u", "undo", "Undo"),
         Binding("s", "save_changes", "Save"),
+        Binding("S", "cycle_sort", "Sort"),
         Binding("p", "pick_context", "Group"),
         Binding("e", "cycle_slot_next", "Slot"),
         Binding("tab", "cycle_slot_next", show=False),
@@ -131,6 +139,8 @@ class AscApp(App):
         # Slots are discovered from the provider, not from config.
         self._slots: list[str] = [PRODUCTION]
         self._filter: str = ""
+        # Display order only — reset whenever a new context is loaded.
+        self._sort_mode: SortMode = SortMode.AZURE
         self._g_pressed: bool = False
         self._d_pressed: bool = False
         # _undo_stack holds staged (uncommitted) changes.
@@ -198,6 +208,7 @@ class AscApp(App):
 
         self._all_settings = await self._fetch_settings(slot)
         self._baseline = copy.deepcopy(self._all_settings)
+        self._sort_mode = SortMode.AZURE
         self._undo_stack.clear()
         self.dirty = False
         self._refresh_table()
@@ -288,13 +299,28 @@ class AscApp(App):
         return self.query_one("#env-table", SettingsTable)
 
     def _refresh_table(self) -> None:
-        """Repopulate the table, applying the current filter if any."""
+        """Repopulate the table, applying the current filter and sort if any."""
         settings = (
             [s for s in self._all_settings if s.matches(self._filter)]
             if self._filter
             else self._all_settings
         )
-        self._get_table().set_rows(settings)
+        self._get_table().set_rows(self._in_sort_order(settings))
+
+    def _in_sort_order(self, settings: list[AppSetting]) -> list[AppSetting]:
+        """Return *settings* in the current display order.
+
+        Sorting is deliberately a view concern: ``_all_settings`` keeps the
+        order the provider returned so staging and the save diff are untouched
+        by whatever the user is looking at.
+        """
+        if self._sort_mode is SortMode.AZURE:
+            return settings
+        return sorted(
+            settings,
+            key=lambda s: s.key.lower(),
+            reverse=self._sort_mode is SortMode.KEY_DESC,
+        )
 
     def _selected_key(self) -> str | None:
         """Return the key of the currently highlighted table row, or None."""
@@ -617,6 +643,13 @@ class AscApp(App):
         if next_slot == self.current_slot:
             return
         self._confirm_navigate(self.current_group, self.current_app, next_slot)
+
+    def action_cycle_sort(self) -> None:
+        """Cycle the table's display order: Azure order → A-Z → Z-A."""
+        self._clear_prefix()
+        self._sort_mode = self._sort_mode.next()
+        self._refresh_table()
+        self.notify(f"Sort: {self._sort_mode.value}", timeout=2)
 
     def action_pick_context(self) -> None:
         """Open the unified group+app picker modal."""
