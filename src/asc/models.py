@@ -75,6 +75,19 @@ def values_equivalent(a: str, b: str) -> bool:
     return (ref_a.vault, ref_a.secret) == (ref_b.vault, ref_b.secret)
 
 
+def key_error(key: str) -> str | None:
+    """Return why *key* is unusable as a setting name, or None if it is fine.
+
+    A leading ``-`` is rejected because every write goes through the Azure
+    CLI, which would read the key as a flag rather than a setting name.
+    """
+    if not key:
+        return "Key cannot be blank"
+    if key.startswith("-"):
+        return "Key cannot start with '-' — the Azure CLI reads it as a flag"
+    return None
+
+
 def compose_kv_ref(vault: str, secret: str) -> str:
     """Compose a Key Vault reference in SecretUri format."""
     return f"@Microsoft.KeyVault(SecretUri=https://{vault}.vault.azure.net/secrets/{secret})"

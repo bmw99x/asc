@@ -6,6 +6,8 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label
 
+from asc.models import key_error
+
 
 class RenameScreen(ModalScreen[str | None]):
     """Modal that lets the user rename a setting's key.
@@ -36,8 +38,9 @@ class RenameScreen(ModalScreen[str | None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         new_key = event.value.strip()
 
-        if not new_key:
-            self._show_error("Key cannot be empty")
+        invalid = key_error(new_key)
+        if invalid is not None:
+            self._show_error(invalid)
             return
 
         if new_key == self._old_key:

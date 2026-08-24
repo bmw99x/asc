@@ -6,7 +6,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Input, Label
 
-from asc.models import compose_kv_ref
+from asc.models import compose_kv_ref, key_error
 
 
 def parse_kv_input(text: str) -> tuple[str, str] | None:
@@ -25,8 +25,8 @@ class AddScreen(ModalScreen[tuple[str, str, bool] | None]):
     """Modal that lets the user add a new key/value setting.
 
     Dismisses with ``(key, value, slot_setting)`` on save, or None on cancel.
-    Inline validation prevents duplicate or blank keys, and malformed Key
-    Vault references when "Key Vault reference" is checked.
+    Inline validation prevents duplicate, blank or ``-``-prefixed keys, and
+    malformed Key Vault references when "Key Vault reference" is checked.
     """
 
     BINDINGS = [
@@ -67,8 +67,9 @@ class AddScreen(ModalScreen[tuple[str, str, bool] | None]):
         key = self.query_one("#add-key", Input).value.strip()
         error = self.query_one("#add-error", Label)
 
-        if not key:
-            error.update("Key cannot be blank")
+        invalid = key_error(key)
+        if invalid is not None:
+            error.update(invalid)
             self.query_one("#add-key", Input).focus()
             return
 
