@@ -896,6 +896,43 @@ class TestSlotSwitching:
             assert app.current_slot == "staging"
 
 
+class TestSaveNavigateRace:
+    async def test_slot_switch_is_refused_while_a_save_is_running(self):
+        """
+        GIVEN a save that is still writing to the provider
+        WHEN the user tries to switch slot
+        THEN the switch is refused with a warning and the slot is unchanged
+        """
+        import time
+
+        class _SlowApplyProvider(MockProvider):
+            def apply(
+                self, slot: str, upserts: list[AppSetting], deletes: list[str]
+            ) -> None:
+                time.sleep(0.3)
+                super().apply(slot, upserts, deletes)
+
+        async with AscApp(provider=_SlowApplyProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("t")
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            assert app._save_in_progress() is True  # noqa: SLF001
+
+            await pilot.press("e")
+            await pilot.pause()
+
+            assert app.current_slot == PRODUCTION
+            assert any("save in progress" in m.lower() for m in messages(pilot))
+
+            await wait_loaded(pilot)
+            assert app.dirty is False
+
+
 class TestContextSwitching:
     async def test_app_switch_resets_slot_to_production(self):
         """

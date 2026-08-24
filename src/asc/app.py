@@ -37,6 +37,8 @@ from asc.widgets.slot_tabs import SlotTabs
 # Load and navigation share one exclusive worker group so a burst of slot or
 # context switches cannot interleave two half-finished loads.
 _NAV_GROUP = "navigation"
+# Saves run in their own group so navigation can tell one is in flight.
+_SAVE_GROUP = "save"
 
 
 class AscApp(App):
@@ -513,7 +515,7 @@ class AscApp(App):
             )
         return actions
 
-    @work(exclusive=True, group="save")
+    @work(exclusive=True, group=_SAVE_GROUP)
     async def _commit_staged(self) -> None:
         """Flush the net diff to the provider in a single apply call.
 
@@ -557,8 +559,17 @@ class AscApp(App):
         self.loading = False
         self._get_table().focus()
 
+    def _save_in_progress(self) -> bool:
+        """Return True while a save worker is still writing to the provider."""
+        return any(worker.group == _SAVE_GROUP and worker.is_running for worker in self.workers)
+
     def _confirm_navigate(self, group: str, app: str, slot: str) -> None:
         """Navigate to group/app/slot, prompting if there are unsaved changes."""
+        # Navigating mid-save would swap the baseline and slot out from under
+        # the in-flight write, so the user is asked to wait instead.
+        if self._save_in_progress():
+            self.notify("Save in progress — try again in a moment", severity="warning", timeout=4)
+            return
         if not self.dirty:
             self._navigate_to(group, app, slot)
             return
