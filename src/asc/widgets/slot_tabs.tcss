@@ -1,11 +1,11 @@
-EnvTabs {
+SlotTabs {
     height: 1;
     layout: horizontal;
     background: $surface-darken-1;
     padding: 0 1;
 }
 
-EnvTabs .tab-project {
+SlotTabs .tab-project {
     width: auto;
     padding: 0 2;
     color: $accent;
@@ -13,19 +13,19 @@ EnvTabs .tab-project {
     text-style: bold;
 }
 
-EnvTabs .tab {
+SlotTabs .tab {
     width: auto;
     padding: 0 2;
     color: $text-muted;
     background: $surface-darken-1;
 }
 
-EnvTabs .tab:hover {
+SlotTabs .tab:hover {
     color: $text;
     background: $surface;
 }
 
-EnvTabs .tab.active {
+SlotTabs .tab.active {
     color: $text;
     background: $primary-darken-2;
     text-style: bold;
