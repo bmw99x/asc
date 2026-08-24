@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from textual.widgets import Input
+from textual.widgets import Input, OptionList
 
 from asc.app import AscApp
 from asc.azure.client import AzureClientError
@@ -10,6 +10,7 @@ from asc.constants import DEFAULT_APP, DEFAULT_GROUP, MOCK_DATA, PRODUCTION
 from asc.models import AppSetting, KeyVaultRef, compose_kv_ref
 from asc.providers import MockProvider
 from asc.screens.confirm import ConfirmScreen
+from asc.screens.context_picker import ContextPickerScreen
 from asc.screens.save_confirm import SaveConfirmScreen
 from asc.widgets.settings_table import SettingsTable
 
@@ -47,6 +48,17 @@ async def move_to(pilot, key: str) -> None:
             return
         await pilot.press("j")
     assert table.selected_key == key
+
+
+async def pick_context(pilot, group: str, app: str) -> None:
+    """Drive the already-open context picker to select *group*/*app*."""
+    screen = pilot.app.screen
+    assert isinstance(screen, ContextPickerScreen)
+    option_list = screen.query_one("#picker-list", OptionList)
+    option_list.highlighted = option_list.get_option_index(f"{group}/{app}")
+    await pilot.pause()
+    await pilot.press("enter")
+    await pilot.pause()
 
 
 def messages(pilot) -> list[str]:
@@ -359,6 +371,93 @@ class TestSaveFlow:
             assert len(app._undo_stack) == 1  # noqa: SLF001
             assert any("simulated write failure" in m for m in messages(pilot))
 
+    async def test_declining_the_save_confirm_writes_nothing(self):
+        """
+        GIVEN staged changes and the SaveConfirmScreen open
+        WHEN the user declines with n
+        THEN the provider is untouched and the stage and dirty flag survive
+        """
+        provider = MockProvider()
+        before = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await move_to(pilot, "NEW_TO_DELETE")
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, SaveConfirmScreen)
+            await pilot.press("n")
+            await wait_loaded(pilot)
+
+            after = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+            assert after == before
+            assert app.dirty is True
+            assert len(app._undo_stack) == 1  # noqa: SLF001
+
+    async def test_escaping_the_save_confirm_writes_nothing(self):
+        """
+        GIVEN staged changes and the SaveConfirmScreen open
+        WHEN the user presses Escape
+        THEN the provider is untouched and the stage survives
+        """
+        provider = MockProvider()
+        before = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, SaveConfirmScreen)
+            await pilot.press("escape")
+            await wait_loaded(pilot)
+
+            after = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+            assert after == before
+            assert app.dirty is True
+            assert len(app._undo_stack) == 1  # noqa: SLF001
+
+    async def test_staging_alone_writes_nothing_to_the_provider(self):
+        """
+        GIVEN a loaded app
+        WHEN the user stages a sticky toggle, an add and a delete without saving
+        THEN the provider still holds exactly the original settings
+        """
+        provider = MockProvider()
+        before = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+        async with AscApp(provider=provider).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await move_to(pilot, "APP_ENV")
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("o")
+            for ch in "STAGED_ONLY":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            for ch in "nope":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await pilot.pause()
+
+            await move_to(pilot, "NEW_TO_DELETE")
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert len(app._undo_stack) == 3  # noqa: SLF001
+            after = {s.key: (s.value, s.slot_setting) for s in provider.list_settings(PRODUCTION)}
+            assert after == before
+            assert "STAGED_ONLY" not in after
+
     async def test_save_with_no_changes_notifies(self):
         """
         GIVEN a clean app
@@ -582,22 +681,156 @@ class TestContextSwitching:
             expected = len(MOCK_DATA["Internal"]["admin"][PRODUCTION])
             assert table_of(pilot).row_count == expected
 
-    async def test_group_app_memory_restores_last_app(self):
+    async def test_picker_app_switch_resets_slot_to_production(self):
         """
-        GIVEN the user was last on MyProduct/web
-        WHEN they return to the MyProduct group via the picker default
-        THEN the remembered app is used
+        GIVEN the app is on MyProduct/api's staging slot
+        WHEN the user picks MyProduct/web with p
+        THEN the slot resets to production and web's settings load
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("e")
+            await wait_loaded(pilot)
+            assert app.current_slot == "staging"
+
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, DEFAULT_GROUP, "web")
+            await wait_loaded(pilot)
+
+            assert app.current_app == "web"
+            assert app.current_slot == PRODUCTION
+            expected = len(MOCK_DATA[DEFAULT_GROUP]["web"][PRODUCTION])
+            assert table_of(pilot).row_count == expected
+
+    async def test_picker_group_switch_loads_other_group(self):
+        """
+        GIVEN the default group is active
+        WHEN the user picks Internal/admin with p
+        THEN that group's app settings load on the production slot
         """
         async with AscApp().run_test(headless=True) as pilot:
             await wait_loaded(pilot)
             app = cast(AscApp, pilot.app)
 
-            app._navigate_to(DEFAULT_GROUP, "web", PRODUCTION)  # noqa: SLF001
-            await wait_loaded(pilot)
-            app._navigate_to("Internal", "admin", PRODUCTION)  # noqa: SLF001
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, "Internal", "admin")
             await wait_loaded(pilot)
 
-            assert app._group_app_memory[DEFAULT_GROUP] == "web"  # noqa: SLF001
+            assert (app.current_group, app.current_app) == ("Internal", "admin")
+            assert app.current_slot == PRODUCTION
+            expected = len(MOCK_DATA["Internal"]["admin"][PRODUCTION])
+            assert table_of(pilot).row_count == expected
+
+    async def test_picker_switch_is_guarded_when_dirty(self):
+        """
+        GIVEN unsaved changes
+        WHEN the user picks another app and declines the confirmation
+        THEN the context and the stage are untouched
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, DEFAULT_GROUP, "web")
+            assert isinstance(pilot.app.screen, ConfirmScreen)
+            await pilot.press("n")
+            await wait_loaded(pilot)
+
+            assert app.current_app == DEFAULT_APP
+            assert app.dirty is True
+            assert len(app._undo_stack) == 1  # noqa: SLF001
+
+    async def test_picker_switch_confirmed_when_dirty_clears_stage(self):
+        """
+        GIVEN unsaved changes
+        WHEN the user picks another app and confirms the switch
+        THEN the new app loads with a clean stage
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("t")
+            await pilot.pause()
+
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, DEFAULT_GROUP, "web")
+            assert isinstance(pilot.app.screen, ConfirmScreen)
+            await pilot.press("y")
+            await wait_loaded(pilot)
+
+            assert app.current_app == "web"
+            assert app.dirty is False
+            assert app._undo_stack == []  # noqa: SLF001
+
+    async def test_picking_the_current_app_does_not_navigate(self):
+        """
+        GIVEN the app is on the staging slot
+        WHEN the user picks the app that is already active
+        THEN nothing reloads and the slot is left alone
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await pilot.press("e")
+            await wait_loaded(pilot)
+
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, DEFAULT_GROUP, DEFAULT_APP)
+            await wait_loaded(pilot)
+
+            assert app.current_slot == "staging"
+            assert isinstance(pilot.app.focused, SettingsTable)
+
+    async def test_clicking_the_app_label_opens_the_picker(self):
+        """
+        GIVEN the app has loaded
+        WHEN the user clicks the app label in the slot bar
+        THEN the context picker opens
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+
+            await pilot.click("#slot-tabs-app")
+            await pilot.pause()
+
+            assert isinstance(pilot.app.screen, ContextPickerScreen)
+
+    async def test_group_app_memory_restores_last_app_on_return(self):
+        """
+        GIVEN MyProduct/web was the last app used in that group
+        WHEN navigation returns to MyProduct without a valid app for it
+        THEN the remembered app (web) is restored, not the group's first app
+        """
+        async with AscApp().run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, DEFAULT_GROUP, "web")
+            await wait_loaded(pilot)
+            await pilot.press("p")
+            await pilot.pause()
+            await pick_context(pilot, "Internal", "admin")
+            await wait_loaded(pilot)
+
+            # "admin" does not exist under MyProduct, so _resolve_app falls back
+            # to the app last used in that group rather than to apps[0] ("api").
+            app._navigate_to(DEFAULT_GROUP, "admin", PRODUCTION)  # noqa: SLF001
+            await wait_loaded(pilot)
+
+            assert app.current_app == "web"
+            expected = len(MOCK_DATA[DEFAULT_GROUP]["web"][PRODUCTION])
+            assert table_of(pilot).row_count == expected
 
     async def test_subtitle_reflects_group_app_and_slot(self):
         """
