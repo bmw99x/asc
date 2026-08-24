@@ -4,17 +4,24 @@ All calls shell out to ``az webapp`` so no Azure SDK dependency
 is required. The caller is responsible for ensuring ``az`` is authenticated
 (``az login`` or a service principal in the environment).
 
-Raises ``AzureClientError`` on any non-zero exit code.
+Every failure — non-zero exit, a missing ``az`` binary, a timeout, or output
+that is not the JSON we asked for — is raised as ``AzureClientError``, the one
+exception type the app knows how to report.
 """
 
 import json
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
+
+#: Ceiling on any single ``az`` call. Azure occasionally hangs on auth prompts
+#: or network stalls; without a bound the TUI would wait forever.
+AZ_TIMEOUT_SECONDS = 120
 
 
 class AzureClientError(Exception):
-    """Raised when an ``az`` CLI call returns a non-zero exit code."""
+    """Raised when an ``az`` CLI call fails, hangs, or answers with junk."""
 
 
 class AzureClient:
@@ -51,7 +58,7 @@ class AzureClient:
                 "json",
             ]
         )
-        return json.loads(out)
+        return self._parse_json(out)
 
     def list_settings(self, slot: str | None = None) -> list[dict]:
         cmd = [
@@ -69,7 +76,7 @@ class AzureClient:
             "--output",
             "json",
         ]
-        return json.loads(self._run(cmd + self._slot_args(slot)))
+        return self._parse_json(self._run(cmd + self._slot_args(slot)))
 
     def set_settings(self, settings: list[dict], slot: str | None = None) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -145,8 +152,29 @@ class AzureClient:
         return ["--slot", slot] if slot is not None else []
 
     def _run(self, cmd: list[str]) -> str:
-        """Run a command, returning stdout. Raises AzureClientError on failure."""
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        """Run a command, returning stdout. Raises AzureClientError on failure.
+
+        Every failure mode is funnelled into ``AzureClientError`` — the app
+        catches only that, so anything else would take the whole TUI down.
+        """
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=AZ_TIMEOUT_SECONDS
+            )
+        except FileNotFoundError as exc:
+            raise AzureClientError("az CLI not found on PATH — install the Azure CLI") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise AzureClientError(
+                f"az timed out after {AZ_TIMEOUT_SECONDS}s: {' '.join(cmd[:4])}"
+            ) from exc
         if result.returncode != 0:
             raise AzureClientError(result.stderr)
         return result.stdout
+
+    @staticmethod
+    def _parse_json(out: str) -> Any:
+        """Parse az JSON output, reporting junk as AzureClientError."""
+        try:
+            return json.loads(out)
+        except json.JSONDecodeError as exc:
+            raise AzureClientError(f"az returned unexpected output: {out[:200]!r}") from exc
