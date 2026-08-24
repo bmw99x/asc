@@ -89,6 +89,24 @@ def test_cli_merges_with_existing_config(monkeypatch, tmp_path):
     assert "rg-staging" in written
 
 
+def test_cli_malformed_existing_config_exits_nonzero(monkeypatch, tmp_path):
+    """A hand-broken config.json is reported, not raised as a traceback."""
+    monkeypatch.setattr(
+        "asc.tools.autoconfig.__main__.discover",
+        lambda run=None: discover(run=fake_run),
+    )
+
+    out_path = tmp_path / "config.json"
+    out_path.write_text("{ not json")
+
+    runner = CliRunner()
+    result = runner.invoke(app, [str(out_path)])
+
+    assert result.exit_code != 0
+    assert "Error parsing existing config" in result.output
+    assert out_path.read_text() == "{ not json"
+
+
 def test_cli_invalid_mapping_json_exits_nonzero(tmp_path):
     out_path = tmp_path / "config.json"
     runner = CliRunner()

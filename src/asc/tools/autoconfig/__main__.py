@@ -55,7 +55,11 @@ def main(
 
     existing: dict[str, dict[str, dict[str, str]]] = {}
     if output_path.exists():
-        existing = json.loads(output_path.read_text())
+        try:
+            existing = json.loads(output_path.read_text())
+        except json.JSONDecodeError as e:
+            typer.echo(f"Error parsing existing config at {output_path}: {e}", err=True)
+            sys.exit(1)
 
     merged = {**existing, **renamed}
 
