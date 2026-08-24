@@ -1,0 +1,25 @@
+ConfirmScreen {
+    align: center middle;
+}
+
+#confirm-container {
+    width: 52;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $error;
+}
+
+#confirm-message {
+    text-style: bold;
+    margin-bottom: 2;
+}
+
+#confirm-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    margin-left: 1;
+}

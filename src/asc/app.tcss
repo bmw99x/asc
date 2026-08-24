@@ -1,0 +1,132 @@
+Screen {
+    background: $surface;
+}
+
+#main {
+    height: 1fr;
+    padding: 0 1;
+}
+
+#search {
+    dock: top;
+    height: 3;
+    margin: 1 0 0 0;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#search:focus {
+    border: tall $primary;
+}
+
+#env-table {
+    height: 1fr;
+    margin: 1 0;
+    scrollbar-gutter: stable;
+}
+
+#env-table > .datatable--header {
+    background: $primary-darken-3;
+    color: $text;
+    text-style: bold;
+}
+
+#env-table > .datatable--cursor {
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#env-table > .datatable--even-row {
+    background: $surface-darken-1;
+}
+
+HelpScreen,
+EditScreen,
+AddScreen,
+ConfirmScreen {
+    align: center middle;
+}
+
+#help-container {
+    width: 52;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#help-text {
+    color: $text-muted;
+}
+
+#edit-container,
+#add-container,
+#rename-container {
+    width: 64;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#edit-title,
+#add-title,
+#rename-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#edit-value,
+#add-key,
+#add-value,
+#rename-key {
+    margin-bottom: 1;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#edit-value:focus,
+#add-key:focus,
+#add-value:focus,
+#rename-key:focus {
+    border: tall $primary;
+}
+
+#edit-hint,
+#add-hint,
+#rename-hint {
+    color: $text-muted;
+}
+
+#add-multiline {
+    margin-bottom: 1;
+}
+
+#add-error {
+    color: $error;
+    height: 1;
+    margin-bottom: 1;
+}
+
+#confirm-container {
+    width: 52;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $error;
+}
+
+#confirm-message {
+    text-style: bold;
+    margin-bottom: 2;
+}
+
+#confirm-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    margin-left: 1;
+}

@@ -1,0 +1,15 @@
+HelpScreen {
+    align: center middle;
+}
+
+#help-container {
+    width: 52;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#help-text {
+    color: $text-muted;
+}

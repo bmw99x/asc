@@ -1,0 +1,32 @@
+EnvTabs {
+    height: 1;
+    layout: horizontal;
+    background: $surface-darken-1;
+    padding: 0 1;
+}
+
+EnvTabs .tab-project {
+    width: auto;
+    padding: 0 2;
+    color: $accent;
+    background: $surface-darken-1;
+    text-style: bold;
+}
+
+EnvTabs .tab {
+    width: auto;
+    padding: 0 2;
+    color: $text-muted;
+    background: $surface-darken-1;
+}
+
+EnvTabs .tab:hover {
+    color: $text;
+    background: $surface;
+}
+
+EnvTabs .tab.active {
+    color: $text;
+    background: $primary-darken-2;
+    text-style: bold;
+}

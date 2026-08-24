@@ -1,0 +1,30 @@
+EditScreen {
+    align: center middle;
+}
+
+#edit-container {
+    width: 64;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#edit-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#edit-value {
+    margin-bottom: 1;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#edit-value:focus {
+    border: tall $primary;
+}
+
+#edit-hint {
+    color: $text-muted;
+}

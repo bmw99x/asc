@@ -1,0 +1,20 @@
+#env-table {
+    height: 1fr;
+    margin: 1 0;
+    scrollbar-gutter: stable;
+}
+
+#env-table > .datatable--header {
+    background: $primary-darken-3;
+    color: $text;
+    text-style: bold;
+}
+
+#env-table > .datatable--cursor {
+    background: $primary;
+    color: $text;
+}
+
+#env-table > .datatable--even-row {
+    background: $surface-darken-1;
+}

@@ -1,0 +1,65 @@
+AddScreen {
+    align: center middle;
+}
+
+#add-container {
+    width: 64;
+    height: auto;
+    padding: 2 3;
+    background: $surface-darken-2;
+    border: round $primary;
+}
+
+#add-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#add-key,
+#add-value {
+    margin-bottom: 1;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#add-key:focus,
+#add-value:focus {
+    border: tall $primary;
+}
+
+#add-blob {
+    height: 8;
+    margin-bottom: 1;
+    border: tall $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+#add-blob:focus {
+    border: tall $primary;
+}
+
+#add-multiline {
+    margin-bottom: 1;
+    background: $surface-darken-2;
+    border: none;
+}
+
+#add-error {
+    color: $error;
+    height: 1;
+    margin-bottom: 1;
+}
+
+#add-hint {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#add-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#add-buttons Button {
+    margin-left: 1;
+}

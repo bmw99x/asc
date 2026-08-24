@@ -1,0 +1,35 @@
+MultilineViewScreen {
+    align: center middle;
+}
+
+MultilineViewScreen > * {
+    width: 90%;
+    max-width: 120;
+}
+
+#ml-title {
+    background: $primary-darken-2;
+    color: $text;
+    text-style: bold;
+    padding: 0 2;
+    height: 1;
+}
+
+#ml-table {
+    height: 1fr;
+    border: solid $surface-lighten-1;
+}
+
+#ml-status {
+    background: $surface-darken-1;
+    color: $warning;
+    padding: 0 2;
+    height: 1;
+}
+
+#ml-hint {
+    background: $surface-darken-1;
+    color: $text-muted;
+    padding: 0 2;
+    height: 1;
+}
