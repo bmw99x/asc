@@ -299,6 +299,76 @@ class TestCursorStability:
             assert table_of(pilot).selected_key == "LOG_LEVEL"
 
 
+class TestPrefixKeys:
+    async def test_d_then_movement_then_d_stages_nothing(self):
+        """
+        GIVEN a half-typed dd
+        WHEN the user moves the cursor before completing it
+        THEN the pending d is forgotten and nothing is deleted
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await pilot.press("d")
+            await pilot.press("j")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert app._undo_stack == []  # noqa: SLF001
+            assert table_of(pilot).row_count == PROD_ROWS
+
+    async def test_d_then_another_action_then_d_stages_nothing(self):
+        """
+        GIVEN a half-typed dd
+        WHEN an unrelated action (copy) runs before the second d
+        THEN the pending d is forgotten
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await pilot.press("d")
+            await pilot.press("y")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert app._undo_stack == []  # noqa: SLF001
+
+    async def test_g_then_movement_then_g_does_not_jump_to_top(self):
+        """
+        GIVEN a half-typed gg
+        WHEN the user moves the cursor before completing it
+        THEN the second g starts a fresh gg instead of jumping
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "LOG_LEVEL")
+
+            await pilot.press("g")
+            await pilot.press("j")
+            await pilot.press("g")
+            await pilot.pause()
+
+            assert table_of(pilot).selected_key == "NEW_TO_DELETE"
+
+    async def test_dd_still_works_when_pressed_consecutively(self):
+        """
+        GIVEN no intervening keys
+        WHEN dd is pressed
+        THEN the selected setting is still staged for deletion
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert len(app._undo_stack) == 1  # noqa: SLF001
+
+
 class TestSaveFlow:
     async def test_add_edit_delete_then_save_writes_net_changes(self):
         """

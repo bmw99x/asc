@@ -588,6 +588,7 @@ class AscApp(App):
 
     def action_cycle_slot_next(self) -> None:
         """Advance to the next slot for the current app (wraps around)."""
+        self._clear_prefix()
         if not self._slots:
             return
         idx = self._slots.index(self.current_slot) if self.current_slot in self._slots else 0
@@ -598,6 +599,7 @@ class AscApp(App):
 
     def action_pick_context(self) -> None:
         """Open the unified group+app picker modal."""
+        self._clear_prefix()
 
         def on_pick(result: tuple[str, str] | None) -> None:
             if result is None:
@@ -634,10 +636,24 @@ class AscApp(App):
         event.stop()
         self.action_edit_setting()
 
+    def on_data_table_row_highlighted(self, event: SettingsTable.RowHighlighted) -> None:
+        """Any cursor movement abandons a half-typed dd/gg prefix."""
+        self._clear_prefix()
+
     # --------------------------------------------------------------- actions
+
+    def _clear_prefix(self) -> None:
+        """Forget a half-typed vim prefix (the first d of dd, the first g of gg).
+
+        Called from every action that is not itself building a prefix, and from
+        cursor movement, so ``d j d`` deletes nothing.
+        """
+        self._d_pressed = False
+        self._g_pressed = False
 
     async def action_quit(self) -> None:
         """Quit, prompting first when there are staged changes to lose."""
+        self._clear_prefix()
         if not self.dirty:
             self.exit()
             return
@@ -655,16 +671,19 @@ class AscApp(App):
         self.push_screen(ConfirmScreen(msg), on_confirm)
 
     def action_toggle_help(self) -> None:
+        self._clear_prefix()
         self.push_screen(HelpScreen())
 
     def action_focus_search(self) -> None:
         """Show and focus the search bar."""
+        self._clear_prefix()
         search = self.query_one("#search", Input)
         search.display = True
         search.focus()
 
     def action_clear_search(self) -> None:
         """Clear active filter and hide the search bar."""
+        self._clear_prefix()
         search = self.query_one("#search", Input)
         if search.value:
             search.value = ""
@@ -675,6 +694,7 @@ class AscApp(App):
 
     def action_jump_top(self) -> None:
         """Implement vim-style gg: move to the first row on the second g press."""
+        self._d_pressed = False
         if self._g_pressed:
             self._g_pressed = False
             self._get_table().move_cursor(row=0)
@@ -687,11 +707,13 @@ class AscApp(App):
 
     def action_jump_bottom(self) -> None:
         """Move cursor to the last row (vim G)."""
+        self._clear_prefix()
         table = self._get_table()
         table.move_cursor(row=table.row_count - 1)
 
     def action_copy_value(self) -> None:
         """Copy the selected row's value — Key Vault rows copy the raw reference."""
+        self._clear_prefix()
         setting = self._find(self._selected_key() or "")
         if setting is None:
             return
@@ -705,6 +727,7 @@ class AscApp(App):
 
     def action_copy_resolved(self) -> None:
         """Copy the resolved secret behind the selected Key Vault reference."""
+        self._clear_prefix()
         setting = self._find(self._selected_key() or "")
         if setting is None or setting.kv_ref is None:
             self.notify("Not a Key Vault reference", severity="warning", timeout=2)
@@ -730,6 +753,7 @@ class AscApp(App):
 
     def action_edit_setting(self) -> None:
         """Open the edit modal for the currently selected setting."""
+        self._clear_prefix()
         key = self._selected_key()
         if key is None:
             return
@@ -758,6 +782,7 @@ class AscApp(App):
 
     def action_rename_setting(self) -> None:
         """Open the rename modal for the selected setting's key."""
+        self._clear_prefix()
         key = self._selected_key()
         if key is None:
             return
@@ -773,6 +798,7 @@ class AscApp(App):
 
     def action_add_setting(self) -> None:
         """Open the add modal to insert a new setting."""
+        self._clear_prefix()
         existing = {s.key for s in self._all_settings}
 
         def on_save(result: tuple[str, str, bool] | None) -> None:
@@ -786,6 +812,7 @@ class AscApp(App):
 
     def action_toggle_sticky(self) -> None:
         """Stage a flip of the selected setting's deployment-slot flag."""
+        self._clear_prefix()
         key = self._selected_key()
         if key is None:
             return
@@ -798,6 +825,7 @@ class AscApp(App):
 
     def action_delete_setting(self) -> None:
         """Implement vim-style dd: stage deletion of the selected setting."""
+        self._g_pressed = False
         if self._d_pressed:
             self._d_pressed = False
             key = self._selected_key()
@@ -815,6 +843,7 @@ class AscApp(App):
 
     def action_save_changes(self) -> None:
         """Open SaveConfirmScreen to review and commit staged changes."""
+        self._clear_prefix()
         if not self._undo_stack:
             self.notify("No unsaved changes", timeout=2)
             return
@@ -837,6 +866,7 @@ class AscApp(App):
 
     def action_undo(self) -> None:
         """Reverse the most recent staged mutation."""
+        self._clear_prefix()
         if not self._undo_stack:
             self.notify("Nothing to undo", timeout=2)
             return
