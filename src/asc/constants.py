@@ -4,6 +4,8 @@ from asc.models import compose_kv_ref
 
 APP_TITLE = "asc — Azure App Service Config"
 
+TABLE_COLUMNS = ("Key", "Value", "Badges")
+
 PRODUCTION = "production"
 
 DEFAULT_GROUP: str = "MyProduct"
