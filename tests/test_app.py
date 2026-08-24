@@ -229,6 +229,76 @@ class TestStickyToggle:
             assert "[slot]" not in badge_of(pilot, "DATABASE_URL")
 
 
+class TestCursorStability:
+    async def test_staging_a_toggle_keeps_the_cursor_on_the_same_row(self):
+        """
+        GIVEN the cursor is on a row other than the first
+        WHEN a sticky toggle is staged (which repopulates the table)
+        THEN the cursor is still on that same setting
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "LOG_LEVEL")
+
+            await pilot.press("t")
+            await pilot.pause()
+
+            assert table_of(pilot).selected_key == "LOG_LEVEL"
+
+    async def test_dd_on_a_middle_row_leaves_cursor_on_the_next_row(self):
+        """
+        GIVEN the cursor is on a middle row
+        WHEN the user deletes it with dd
+        THEN the cursor lands on the row that took its place (vim dd behaviour)
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "DATABASE_URL")
+
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert table_of(pilot).selected_key == "LOG_LEVEL"
+
+    async def test_dd_twice_deletes_two_adjacent_settings(self):
+        """
+        GIVEN the cursor is on a middle row
+        WHEN the user presses dd twice
+        THEN the two adjacent settings are staged for deletion, not the first row
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            app = cast(AscApp, pilot.app)
+            await move_to(pilot, "DATABASE_URL")
+
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            keys = {s.key for s in app._all_settings}  # noqa: SLF001
+            assert keys == {"APP_ENV", "NEW_TO_DELETE"}
+
+    async def test_dd_on_the_last_row_clamps_to_the_new_last_row(self):
+        """
+        GIVEN the cursor is on the final row
+        WHEN it is deleted
+        THEN the cursor clamps back onto the new final row
+        """
+        async with AscApp(provider=MockProvider()).run_test(headless=True) as pilot:
+            await wait_loaded(pilot)
+            await move_to(pilot, "NEW_TO_DELETE")
+
+            await pilot.press("d")
+            await pilot.press("d")
+            await pilot.pause()
+
+            assert table_of(pilot).selected_key == "LOG_LEVEL"
+
+
 class TestSaveFlow:
     async def test_add_edit_delete_then_save_writes_net_changes(self):
         """

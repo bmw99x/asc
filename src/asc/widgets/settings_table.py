@@ -5,6 +5,7 @@ from textual.binding import Binding
 from textual.events import Click
 from textual.message import Message
 from textual.widgets import DataTable
+from textual.widgets.data_table import RowDoesNotExist
 
 from asc.constants import TABLE_COLUMNS
 from asc.models import AppSetting, is_kv_ref
@@ -86,10 +87,27 @@ class SettingsTable(DataTable):
         self.add_columns(*TABLE_COLUMNS)
 
     def set_rows(self, settings: list[AppSetting]) -> None:
-        """Replace table contents with a new list of settings."""
+        """Replace table contents with a new list of settings.
+
+        ``clear()`` drops the cursor back to row 0, which would silently move
+        the selection every time a staged change repopulates the table. The
+        previous selection is therefore restored by key; if that key is gone
+        (it was deleted or filtered out) the cursor clamps to the same row
+        index, so ``dd`` lands on the row that took its place — vim behaviour.
+        """
+        previous_key = self.selected_key
+        previous_row = self.cursor_row
         self.clear()
         for s in settings:
             self.add_row(s.key, value_text(s), badge_text(s), key=s.key)
+
+        if self.row_count == 0 or previous_key is None:
+            return
+        try:
+            row = self.get_row_index(previous_key)
+        except RowDoesNotExist:
+            row = min(previous_row, self.row_count - 1)
+        self.move_cursor(row=row)
 
     @property
     def selected_key(self) -> str | None:
