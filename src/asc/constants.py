@@ -4,6 +4,39 @@ from asc.models import compose_kv_ref
 
 APP_TITLE = "asc — Azure App Service Config"
 
+HELP_TEXT = """\
+ Navigation
+ ──────────────────────────────
+ j / ↓        Move down
+ k / ↑        Move up
+ g g          Jump to top
+ G            Jump to bottom
+ e / Tab      Next slot
+
+ Edit
+ ──────────────────────────────
+ i / Enter    Edit selected value
+ r            Rename selected key
+ o            Add new setting
+ d d          Delete selected setting
+ t            Toggle deployment slot setting
+ u            Undo last change
+ s            Save changes
+
+ Search
+ ──────────────────────────────
+ /            Open search
+ Escape       Clear search / close
+
+ General
+ ──────────────────────────────
+ y            Copy value (Key Vault rows copy raw reference)
+ Y            Copy value (resolve Key Vault reference)
+ p            Switch group / app
+ ?            Toggle this help
+ q            Quit\
+"""
+
 TABLE_COLUMNS = ("Key", "Value", "Badges")
 
 PRODUCTION = "production"
