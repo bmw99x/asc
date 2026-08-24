@@ -56,6 +56,20 @@ def test_compose_round_trips():
     assert parse_kv_ref(raw) == KeyVaultRef("kv-prod", "DbPassword", raw)
 
 
+def test_from_raw_coerces_null_value_to_empty_string():
+    """Real App Service settings can come back with "value": null."""
+    assert AppSetting.from_raw({"name": "K", "value": None}) == AppSetting("K", "", False)
+
+
+def test_from_raw_tolerates_missing_value_and_slot_setting():
+    assert AppSetting.from_raw({"name": "K"}) == AppSetting("K", "", False)
+
+
+def test_kv_helpers_are_defensive_about_non_strings():
+    assert parse_kv_ref(None) is None  # ty: ignore[invalid-argument-type]
+    assert is_kv_ref(None) is False  # ty: ignore[invalid-argument-type]
+
+
 def test_setting_kv_ref_property_and_matches():
     s = AppSetting(key="DB_PASSWORD", value=URI_REF, slot_setting=True)
     assert s.kv_ref is not None

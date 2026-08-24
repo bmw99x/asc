@@ -25,7 +25,13 @@ class KeyVaultRef:
 
 
 def is_kv_ref(value: str) -> bool:
-    """Return True if value starts with @Microsoft.KeyVault( (case-insensitive)."""
+    """Return True if value starts with @Microsoft.KeyVault( (case-insensitive).
+
+    Anything that is not a string (Azure returns ``null`` values for some
+    settings) is simply not a reference.
+    """
+    if not isinstance(value, str):
+        return False
     return value.lstrip().lower().startswith("@microsoft.keyvault(")
 
 
@@ -36,8 +42,11 @@ def parse_kv_ref(value: str) -> KeyVaultRef | None:
     - SecretUri: @Microsoft.KeyVault(SecretUri=https://{vault}.vault.azure.net/secrets/{secret})
     - VaultName: @Microsoft.KeyVault(VaultName={vault};SecretName={secret})
 
-    Returns None if the value is not a Key Vault reference or is malformed.
+    Returns None if the value is not a Key Vault reference, is malformed, or
+    is not a string at all.
     """
+    if not isinstance(value, str):
+        return None
     m = _KV_PREFIX.search(value.strip())
     if not m:
         return None
@@ -94,10 +103,15 @@ class AppSetting:
 
     @classmethod
     def from_raw(cls, raw: dict) -> "AppSetting":
-        """Build a setting from the raw ``az webapp config appsettings`` shape."""
+        """Build a setting from the raw ``az webapp config appsettings`` shape.
+
+        Azure returns ``"value": null`` for some settings, so the value is
+        coerced to a string here — at the boundary — rather than leaving None
+        to blow up in every consumer downstream.
+        """
         return cls(
             key=raw["name"],
-            value=raw["value"],
+            value=raw.get("value") or "",
             slot_setting=bool(raw.get("slotSetting", False)),
         )
 
