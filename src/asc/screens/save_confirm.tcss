@@ -24,6 +24,10 @@ SaveConfirmScreen {
     padding: 1;
 }
 
+#save-confirm-warning {
+    margin-top: 1;
+}
+
 #save-confirm-buttons {
     height: auto;
     align: right middle;

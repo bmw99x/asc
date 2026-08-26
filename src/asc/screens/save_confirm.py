@@ -80,6 +80,10 @@ class SaveConfirmScreen(ModalScreen[bool]):
                         yield Label(diff_line(action))
                 else:
                     yield Label(Text("(no changes)", style="dim"))
+            yield Label(
+                Text("⚠ Saving restarts the app service", style="bold yellow"),
+                id="save-confirm-warning",
+            )
             with Horizontal(id="save-confirm-buttons"):
                 yield Button("Save", variant="success", id="save-confirm-yes")
                 yield Button("Cancel", variant="primary", id="save-confirm-no")

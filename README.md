@@ -130,6 +130,8 @@ Edits, additions, renames, deletions, and sticky-flag toggles are all held in a 
 
 Press `y` (or click Save) to commit all staged changes to Azure, or `n`/`Esc` (or click Cancel) to go back and keep editing. If any write fails the remaining staged changes are left intact so you can retry.
 
+> **Note:** Changing app settings causes Azure to restart the app service (or slot) being edited. The save screen shows a warning to this effect before every write.
+
 Pressing `u` reverses the most recent staged change without touching Azure. Pressing `q` with staged changes asks for confirmation before discarding them, and switching slot, app or group is refused while a save is still being written.
 
 ### Deployment slots
